@@ -1,0 +1,30 @@
+# Development mode: same stack, but every app reloads when you save a file.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# App:            http://localhost:5173  (admin area /admin, client area /client)
+# Backend API:    http://localhost:3000/api/health
+#
+# After changing a package.json, add -V to recreate the node_modules volumes.
+
+services:
+  backend:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    healthcheck:
+      start_period: 60s
+
+  frontend:
+    build:
+      target: dev
+    environment:
+      API_PROXY_TARGET: http://backend:3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports: !override
+      - "127.0.0.1:5173:5173"

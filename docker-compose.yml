@@ -1,0 +1,79 @@
+# RxBooks — full stack for local use.
+#   cp .env.example .env      (then set the passwords)
+#   docker compose up --build
+#
+# App:            http://localhost:8080  (admin area /admin, client area /client)
+# Backend API:    http://localhost:3000/api/health
+#
+# Ports are bound to 127.0.0.1 so nothing is exposed to the local network.
+
+name: rxbooks
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-rxbooks}
+      MYSQL_USER: ${MYSQL_USER:-rxbooks}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: mysql://${MYSQL_USER:-rxbooks}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-rxbooks}
+      DATABASE_TLS: "false"
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      # Sign-in
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      SESSION_HOURS: ${SESSION_HOURS:-8}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Demo users (local development only; keep DEMO_USERS_ENABLED=false in production)
+      DEMO_USERS_ENABLED: ${DEMO_USERS_ENABLED:-false}
+      DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-admin@rxbooks.test}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-}
+      DEMO_CLIENT_EMAIL: ${DEMO_CLIENT_EMAIL:-client@rxbooks.test}
+      DEMO_CLIENT_PASSWORD: ${DEMO_CLIENT_PASSWORD:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  mysql-data:
