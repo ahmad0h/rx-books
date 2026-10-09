@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { hashPassword } from '../src/auth/password.js';
+import { CoaAccount } from '../src/coa/coa-account.entity.js';
 import { Pharmacy } from '../src/pharmacies/pharmacy.entity.js';
 import { User, type UserRole } from '../src/users/user.entity.js';
 
@@ -159,10 +160,74 @@ export class InMemoryPharmacyRepository {
   }
 }
 
+type StoredAccount = Pick<
+  CoaAccount,
+  | 'code'
+  | 'name'
+  | 'type'
+  | 'expenseGroup'
+  | 'description'
+  | 'ownerLabel'
+  | 'categorizable'
+  | 'contraOf'
+  | 'isActive'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+/** Just enough of TypeORM's Repository<CoaAccount>, kept in memory. */
+export class InMemoryCoaRepository {
+  rows: StoredAccount[] = [];
+
+  add(account: Omit<StoredAccount, 'createdAt' | 'updatedAt'>) {
+    const now = new Date();
+    this.rows.push({ ...account, createdAt: now, updatedAt: now });
+  }
+
+  find() {
+    return Promise.resolve(
+      [...this.rows].sort((a, b) => a.code.localeCompare(b.code)),
+    );
+  }
+
+  findOneBy({ code }: { code: string }) {
+    const row = this.rows.find((r) => r.code === code);
+    return Promise.resolve(row ? { ...row } : null);
+  }
+
+  existsBy({ code }: { code: string }) {
+    return Promise.resolve(this.rows.some((r) => r.code === code));
+  }
+
+  /** Case-insensitive, like the MySQL collation. */
+  findOne({ where }: { where: { name: string } }) {
+    const name = where.name.toLowerCase();
+    const row = this.rows.find((r) => r.name.toLowerCase() === name);
+    return Promise.resolve(row ? { ...row } : null);
+  }
+
+  create(input: Partial<StoredAccount>) {
+    return { ...input } as StoredAccount;
+  }
+
+  save(account: StoredAccount) {
+    const now = new Date();
+    const existing = this.rows.find((r) => r.code === account.code);
+    if (existing) {
+      Object.assign(existing, account, { updatedAt: now });
+      return Promise.resolve({ ...existing });
+    }
+    const row = { ...account, createdAt: now, updatedAt: now };
+    this.rows.push(row);
+    return Promise.resolve({ ...row });
+  }
+}
+
 /** The real app with the database replaced by fakes, so tests need no MySQL. */
 export async function createTestApp() {
   const users = new InMemoryUserRepository();
   const pharmacies = new InMemoryPharmacyRepository();
+  const coa = new InMemoryCoaRepository();
   const manager = {
     getRepository: (entity: unknown) =>
       entity === User ? users : entity === Pharmacy ? pharmacies : undefined,
@@ -182,10 +247,12 @@ export async function createTestApp() {
     .useValue(users)
     .overrideProvider(getRepositoryToken(Pharmacy))
     .useValue(pharmacies)
+    .overrideProvider(getRepositoryToken(CoaAccount))
+    .useValue(coa)
     .compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
-  return { app, users, pharmacies, dataSource };
+  return { app, users, pharmacies, coa, dataSource };
 }
