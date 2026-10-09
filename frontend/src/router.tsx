@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { AdminHomePage } from './admin/AdminHomePage.tsx'
 import { AdminLayout } from './admin/AdminLayout.tsx'
+import { PharmaciesPage } from './admin/pharmacies/PharmaciesPage.tsx'
 import { ClientHomePage } from './client/ClientHomePage.tsx'
 import { ClientLayout } from './client/ClientLayout.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
@@ -19,7 +20,10 @@ const router = createBrowserRouter([
   {
     path: '/admin',
     element: <AdminLayout />,
-    children: [{ index: true, element: <AdminHomePage /> }],
+    children: [
+      { index: true, element: <AdminHomePage /> },
+      { path: 'pharmacies', element: <PharmaciesPage /> },
+    ],
   },
   {
     path: '/client',

@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { validateEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { PharmaciesModule } from './pharmacies/pharmacies.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module.js';
     UsersModule,
     AuthModule,
     HealthModule,
+    PharmaciesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -1,17 +1,20 @@
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import type { DataSourceOptions } from 'typeorm';
 import type { DatabaseEnv } from '../config/env.js';
+import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
 import { User } from '../users/user.entity.js';
 import { CreateUsers1790514830000 } from './migrations/1790514830000-CreateUsers.js';
 import { AddPasswordChangedAt1790520000000 } from './migrations/1790520000000-AddPasswordChangedAt.js';
+import { CreatePharmacies1790600000000 } from './migrations/1790600000000-CreatePharmacies.js';
 
 /** Every table the app uses. Add new entities here. */
-export const ENTITIES = [User];
+export const ENTITIES = [User, Pharmacy];
 
 /** Every migration, oldest first. Add new migrations here. */
 export const MIGRATIONS = [
   CreateUsers1790514830000,
   AddPasswordChangedAt1790520000000,
+  CreatePharmacies1790600000000,
 ];
 
 /** Plain TypeORM settings, shared by the app and the migration command line. */

@@ -46,6 +46,10 @@ export class User {
   @Column({ type: 'enum', enum: USER_ROLES })
   role: UserRole;
 
+  /** The pharmacy a client user belongs to. Empty for admins. */
+  @Column({ name: 'pharmacy_id', type: 'int', unsigned: true, nullable: true })
+  pharmacyId: number | null;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 

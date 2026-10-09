@@ -1,11 +1,17 @@
+import { DashboardOutlined, ShopOutlined } from '@ant-design/icons'
 import { RequireRole } from '../auth/RequireRole.tsx'
-import { AppShell } from '../shared/AppShell.tsx'
+import { AppShell, type NavItem } from '../shared/AppShell.tsx'
+
+const ADMIN_NAV: NavItem[] = [
+  { to: '/admin', label: 'Dashboard', icon: <DashboardOutlined /> },
+  { to: '/admin/pharmacies', label: 'Pharmacies', icon: <ShopOutlined /> },
+]
 
 /** Frame for everything under /admin. Only users with the admin role get in. */
 export function AdminLayout() {
   return (
     <RequireRole role="admin">
-      <AppShell areaLabel="Admin console" maxWidth={1100} />
+      <AppShell areaLabel="Admin console" maxWidth={1100} nav={ADMIN_NAV} />
     </RequireRole>
   )
 }
