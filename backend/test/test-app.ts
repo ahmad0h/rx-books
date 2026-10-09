@@ -1,12 +1,13 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, FindOperator } from 'typeorm';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { hashPassword } from '../src/auth/password.js';
 import { CoaAccount } from '../src/coa/coa-account.entity.js';
 import { Pharmacy } from '../src/pharmacies/pharmacy.entity.js';
+import { Rule } from '../src/rules/rule.entity.js';
 import { User, type UserRole } from '../src/users/user.entity.js';
 
 type StoredUser = Pick<
@@ -131,6 +132,10 @@ export class InMemoryPharmacyRepository {
     return Promise.resolve(row ? { ...row } : null);
   }
 
+  existsBy({ id }: { id: number }) {
+    return Promise.resolve(this.rows.some((r) => r.id === id));
+  }
+
   /** Case-insensitive, like the MySQL collation. */
   findOne({ where }: { where: { name: string } }) {
     const name = where.name.toLowerCase();
@@ -223,11 +228,97 @@ export class InMemoryCoaRepository {
   }
 }
 
+type StoredRule = Pick<
+  Rule,
+  | 'id'
+  | 'pharmacyId'
+  | 'keyword'
+  | 'coaCode'
+  | 'tag'
+  | 'priority'
+  | 'autoApprove'
+  | 'source'
+  | 'sourceNote'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'retiredAt'
+>;
+
+/** Like `matches`, but also understands TypeORM's IsNull(). */
+function matchesWhere(row: object, where: object): boolean {
+  return Object.entries(where).every(([key, value]) => {
+    const actual = (row as Record<string, unknown>)[key];
+    if (value instanceof FindOperator) {
+      if (value.type === 'isNull') return actual === null;
+      throw new Error(`Fake repository does not support ${value.type}`);
+    }
+    return actual === value;
+  });
+}
+
+/** Just enough of TypeORM's Repository<Rule>, kept in memory. */
+export class InMemoryRuleRepository {
+  rows: StoredRule[] = [];
+
+  add(
+    input: Omit<StoredRule, 'id' | 'createdAt' | 'updatedAt'> & {
+      createdAt?: Date;
+    },
+  ) {
+    const now = new Date();
+    const row: StoredRule = {
+      ...input,
+      id: this.rows.length + 1,
+      createdAt: input.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.rows.push(row);
+    return row;
+  }
+
+  find({ where }: { where: object }) {
+    return Promise.resolve(
+      this.rows.filter((r) => matchesWhere(r, where)).map((r) => ({ ...r })),
+    );
+  }
+
+  findOneBy({ id }: { id: number }) {
+    const row = this.rows.find((r) => r.id === id);
+    return Promise.resolve(row ? { ...row } : null);
+  }
+
+  existsBy(where: object) {
+    return Promise.resolve(this.rows.some((r) => matchesWhere(r, where)));
+  }
+
+  create(input: Partial<StoredRule>) {
+    return { ...input } as StoredRule;
+  }
+
+  save(rule: StoredRule) {
+    const now = new Date();
+    const existing = this.rows.find((r) => r.id === rule.id);
+    if (existing) {
+      Object.assign(existing, rule, { updatedAt: now });
+      return Promise.resolve({ ...existing });
+    }
+    const row = {
+      ...rule,
+      id: this.rows.length + 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.rows.push(row);
+    return Promise.resolve({ ...row });
+  }
+}
+
 /** The real app with the database replaced by fakes, so tests need no MySQL. */
 export async function createTestApp() {
   const users = new InMemoryUserRepository();
   const pharmacies = new InMemoryPharmacyRepository();
   const coa = new InMemoryCoaRepository();
+  const rules = new InMemoryRuleRepository();
   const manager = {
     getRepository: (entity: unknown) =>
       entity === User ? users : entity === Pharmacy ? pharmacies : undefined,
@@ -249,10 +340,12 @@ export async function createTestApp() {
     .useValue(pharmacies)
     .overrideProvider(getRepositoryToken(CoaAccount))
     .useValue(coa)
+    .overrideProvider(getRepositoryToken(Rule))
+    .useValue(rules)
     .compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
-  return { app, users, pharmacies, coa, dataSource };
+  return { app, users, pharmacies, coa, rules, dataSource };
 }

@@ -76,7 +76,4 @@ docker compose exec backend npm run migration:show
 
 ## Status
 
-- Phase 1 (skeleton): done.
-- Phase 2 (sign-in with admin and client roles): done. `users` table, demo users, login page, role-protected areas.
-- Phase 3 (pharmacies): done. Adding a pharmacy also creates its owner's sign-in (temporary password `123456`, to be replaced by invitations).
-- Phase 4 (chart of accounts): done. 46 accounts seeded by migration from the COA reference (generic bank/card names, no client data). Admins add, edit and deactivate accounts; codes never change and nothing is deleted. `9999 · Uncategorized` always stays active.
+The phase plan, what is done and what was left for later are in [TASKS.md](TASKS.md).

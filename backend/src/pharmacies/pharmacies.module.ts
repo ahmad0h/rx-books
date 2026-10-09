@@ -9,5 +9,6 @@ import { Pharmacy } from './pharmacy.entity.js';
   imports: [TypeOrmModule.forFeature([Pharmacy, User])],
   controllers: [PharmaciesController],
   providers: [PharmaciesService],
+  exports: [PharmaciesService],
 })
 export class PharmaciesModule {}
