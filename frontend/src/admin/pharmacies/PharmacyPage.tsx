@@ -4,18 +4,19 @@ import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { NotFoundPage } from '../../pages/NotFoundPage.tsx'
 import { AccountsTab } from './accounts/AccountsTab.tsx'
+import { TransactionsTab } from './transactions/TransactionsTab.tsx'
 import { PharmacyFormModal } from './PharmacyFormModal.tsx'
 import { usePharmacy } from './usePharmacy.ts'
 
-const TABS = ['accounts', 'details'] as const
+const TABS = ['transactions', 'accounts', 'details'] as const
 type Tab = (typeof TABS)[number]
 
-/** One pharmacy: its bank and card accounts, and its details. More tabs come with later phases. */
+/** One pharmacy: its transactions, bank and card accounts, and details. More tabs come with later phases. */
 export function PharmacyPage() {
   const params = useParams()
   const id = Number(params.id)
   const [search, setSearch] = useSearchParams()
-  const tab: Tab = TABS.find((t) => t === search.get('tab')) ?? 'accounts'
+  const tab: Tab = TABS.find((t) => t === search.get('tab')) ?? 'transactions'
   const { state, reload } = usePharmacy(id)
   const { notification } = App.useApp()
   const [editing, setEditing] = useState(false)
@@ -70,8 +71,15 @@ export function PharmacyPage() {
 
       <Tabs
         activeKey={tab}
-        onChange={(key) => setSearch(key === 'accounts' ? {} : { tab: key })}
+        onChange={(key) => setSearch(key === 'transactions' ? {} : { tab: key })}
         items={[
+          {
+            key: 'transactions',
+            label: 'Transactions',
+            children: (
+              <TransactionsTab pharmacyId={pharmacy.id} onAddAccounts={() => setSearch({ tab: 'accounts' })} />
+            ),
+          },
           { key: 'accounts', label: 'Bank & card accounts', children: <AccountsTab pharmacyId={pharmacy.id} /> },
           {
             key: 'details',

@@ -1,22 +1,28 @@
 /** Error from the backend, with a message that is safe to show to the user. */
 export class ApiError extends Error {
   readonly status: number
+  /** Every message the server sent (e.g. one per bad row in a file). `message` is the first. */
+  readonly messages: string[]
 
-  constructor(status: number, message: string) {
-    super(message)
+  constructor(status: number, messages: string | string[]) {
+    const list = Array.isArray(messages) ? messages : [messages]
+    super(list[0])
     this.name = 'ApiError'
     this.status = status
+    this.messages = list
   }
 }
 
-function messageFrom(body: unknown, status: number): string {
-  if (status === 429) return 'Too many attempts. Wait a minute and try again.'
+function messagesFrom(body: unknown, status: number): string[] {
+  if (status === 429) return ['Too many attempts. Wait a minute and try again.']
   if (body && typeof body === 'object' && 'message' in body) {
     const { message } = body as { message: unknown }
-    if (typeof message === 'string') return message
-    if (Array.isArray(message) && typeof message[0] === 'string') return message[0]
+    if (typeof message === 'string') return [message]
+    if (Array.isArray(message) && message.length > 0 && message.every((m) => typeof m === 'string')) {
+      return message as string[]
+    }
   }
-  return status >= 500 ? 'Something went wrong on our side. Please try again.' : `Request failed (${status}).`
+  return [status >= 500 ? 'Something went wrong on our side. Please try again.' : `Request failed (${status}).`]
 }
 
 /**
@@ -41,6 +47,6 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (res.status === 204) return undefined as T
   const body: unknown = await res.json().catch(() => null)
-  if (!res.ok) throw new ApiError(res.status, messageFrom(body, res.status))
+  if (!res.ok) throw new ApiError(res.status, messagesFrom(body, res.status))
   return body as T
 }

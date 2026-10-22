@@ -11,6 +11,7 @@ import { HealthModule } from './health/health.module.js';
 import { PharmaciesModule } from './pharmacies/pharmacies.module.js';
 import { PharmacyAccountsModule } from './pharmacy-accounts/pharmacy-accounts.module.js';
 import { RulesModule } from './rules/rules.module.js';
+import { TransactionsModule } from './transactions/transactions.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module.js';
     CoaModule,
     RulesModule,
     PharmacyAccountsModule,
+    TransactionsModule,
     DemoModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

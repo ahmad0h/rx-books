@@ -5,6 +5,8 @@ import { CoaAccount } from '../coa/coa-account.entity.js';
 import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
 import { PharmacyAccount } from '../pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../rules/rule.entity.js';
+import { BankTransaction } from '../transactions/bank-transaction.entity.js';
+import { TransactionUpload } from '../transactions/transaction-upload.entity.js';
 import { User } from '../users/user.entity.js';
 import { CreateUsers1790514830000 } from './migrations/1790514830000-CreateUsers.js';
 import { AddPasswordChangedAt1790520000000 } from './migrations/1790520000000-AddPasswordChangedAt.js';
@@ -13,9 +15,18 @@ import { CreateChartOfAccounts1790700000000 } from './migrations/1790700000000-C
 import { CreateRules1790800000000 } from './migrations/1790800000000-CreateRules.js';
 import { CreatePharmacyAccounts1790900000000 } from './migrations/1790900000000-CreatePharmacyAccounts.js';
 import { AddSecondChecking1791000000000 } from './migrations/1791000000000-AddSecondChecking.js';
+import { CreateTransactions1791100000000 } from './migrations/1791100000000-CreateTransactions.js';
 
 /** Every table the app uses. Add new entities here. */
-export const ENTITIES = [User, Pharmacy, CoaAccount, Rule, PharmacyAccount];
+export const ENTITIES = [
+  User,
+  Pharmacy,
+  CoaAccount,
+  Rule,
+  PharmacyAccount,
+  TransactionUpload,
+  BankTransaction,
+];
 
 /** Every migration, oldest first. Add new migrations here. */
 export const MIGRATIONS = [
@@ -26,6 +37,7 @@ export const MIGRATIONS = [
   CreateRules1790800000000,
   CreatePharmacyAccounts1790900000000,
   AddSecondChecking1791000000000,
+  CreateTransactions1791100000000,
 ];
 
 /** Plain TypeORM settings, shared by the app and the migration command line. */

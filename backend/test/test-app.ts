@@ -9,6 +9,8 @@ import { CoaAccount } from '../src/coa/coa-account.entity.js';
 import { Pharmacy } from '../src/pharmacies/pharmacy.entity.js';
 import { PharmacyAccount } from '../src/pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../src/rules/rule.entity.js';
+import { BankTransaction } from '../src/transactions/bank-transaction.entity.js';
+import { TransactionUpload } from '../src/transactions/transaction-upload.entity.js';
 import { User, type UserRole } from '../src/users/user.entity.js';
 
 type StoredUser = Pick<
@@ -251,6 +253,9 @@ function matchesWhere(row: object, where: object): boolean {
     const actual = (row as Record<string, unknown>)[key];
     if (value instanceof FindOperator) {
       if (value.type === 'isNull') return actual === null;
+      if (value.type === 'in') {
+        return (value.value as unknown as unknown[]).includes(actual);
+      }
       throw new Error(`Fake repository does not support ${value.type}`);
     }
     return actual === value;
@@ -371,6 +376,66 @@ export class InMemoryPharmacyAccountRepository {
   }
 }
 
+/**
+ * A generic in-memory table: enough of TypeORM's Repository for the uploads
+ * and transactions code. `unique` names a column that must not repeat,
+ * like a unique index (a clash throws ER_DUP_ENTRY).
+ */
+export class InMemoryTable<T extends { id: number; createdAt: Date }> {
+  rows: T[] = [];
+
+  constructor(private readonly unique?: keyof T) {}
+
+  find({ where }: { where: object }) {
+    return Promise.resolve(
+      this.rows.filter((r) => matchesWhere(r, where)).map((r) => ({ ...r })),
+    );
+  }
+
+  findOneBy(where: object) {
+    const row = this.rows.find((r) => matchesWhere(r, where));
+    return Promise.resolve(row ? { ...row } : null);
+  }
+
+  existsBy(where: object) {
+    return Promise.resolve(this.rows.some((r) => matchesWhere(r, where)));
+  }
+
+  create(input: Partial<T>) {
+    return { ...input } as T;
+  }
+
+  save(input: T): Promise<T>;
+  save(input: T[], options?: object): Promise<T[]>;
+  save(input: T | T[]): Promise<T | T[]> {
+    const items = Array.isArray(input) ? input : [input];
+    const key = this.unique;
+    if (key) {
+      const seen = new Set(this.rows.map((r) => r[key]));
+      for (const item of items) {
+        if (seen.has(item[key])) {
+          return Promise.reject(
+            Object.assign(new Error('Duplicate entry'), {
+              code: 'ER_DUP_ENTRY',
+            }),
+          );
+        }
+        seen.add(item[key]);
+      }
+    }
+    const saved = items.map((item) => {
+      const row = {
+        ...item,
+        id: this.rows.length + 1,
+        createdAt: new Date(),
+      };
+      this.rows.push(row);
+      return { ...row };
+    });
+    return Promise.resolve(Array.isArray(input) ? saved : saved[0]);
+  }
+}
+
 /** The real app with the database replaced by fakes, so tests need no MySQL. */
 export async function createTestApp() {
   const users = new InMemoryUserRepository();
@@ -378,9 +443,16 @@ export async function createTestApp() {
   const coa = new InMemoryCoaRepository();
   const rules = new InMemoryRuleRepository();
   const accounts = new InMemoryPharmacyAccountRepository();
+  const uploads = new InMemoryTable<TransactionUpload>();
+  const transactions = new InMemoryTable<BankTransaction>('sourceRowId');
   const manager = {
     getRepository: (entity: unknown) =>
-      entity === User ? users : entity === Pharmacy ? pharmacies : undefined,
+      new Map<unknown, unknown>([
+        [User, users],
+        [Pharmacy, pharmacies],
+        [TransactionUpload, uploads],
+        [BankTransaction, transactions],
+      ]).get(entity),
   };
   const dataSource = {
     query: vi.fn(),
@@ -403,10 +475,24 @@ export async function createTestApp() {
     .useValue(rules)
     .overrideProvider(getRepositoryToken(PharmacyAccount))
     .useValue(accounts)
+    .overrideProvider(getRepositoryToken(TransactionUpload))
+    .useValue(uploads)
+    .overrideProvider(getRepositoryToken(BankTransaction))
+    .useValue(transactions)
     .compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
-  return { app, users, pharmacies, coa, rules, accounts, dataSource };
+  return {
+    app,
+    users,
+    pharmacies,
+    coa,
+    rules,
+    accounts,
+    uploads,
+    transactions,
+    dataSource,
+  };
 }
