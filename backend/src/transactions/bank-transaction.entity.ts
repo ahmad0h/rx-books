@@ -6,13 +6,34 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-/** Where a transaction is in categorization. Phase 7 only creates "uncategorized". */
+/**
+ * Where a transaction is in categorization:
+ * uncategorized = still in 9999; suggested = has an account a person must confirm;
+ * approved = final (by an auto-approve rule or a person).
+ */
 export const TRANSACTION_STATUSES = [
   'uncategorized',
   'suggested',
   'approved',
 ] as const;
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
+
+/** How the account was chosen. A later phase adds "client". */
+export const TRANSACTION_SOURCES = [
+  'rule',
+  'own_account',
+  'ai',
+  'staff',
+] as const;
+export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
+
+/** Kinds of owner draw (2510), PRD 8.5. */
+export const SUBTAGS = ['personal', 'distribution', 'charity'] as const;
+export type Subtag = (typeof SUBTAGS)[number];
+
+/** Something a person should look at, whatever the account. */
+export const TRANSACTION_FLAGS = ['unknown_account'] as const;
+export type TransactionFlag = (typeof TRANSACTION_FLAGS)[number];
 
 /** One row from a bank or card CSV. */
 @Entity({ name: 'transactions' })
@@ -76,6 +97,57 @@ export class BankTransaction {
 
   @Column({ type: 'varchar', length: 20, default: 'uncategorized' })
   status: TransactionStatus;
+
+  /** Null while uncategorized. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  source: TransactionSource | null;
+
+  /** The rule that chose the account, when source is "rule". */
+  @Column({ name: 'rule_id', type: 'int', unsigned: true, nullable: true })
+  ruleId: number | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  flag: TransactionFlag | null;
+
+  /** The person who approved it; null when an auto-approve rule did. */
+  @Column({ name: 'approved_by', type: 'int', unsigned: true, nullable: true })
+  approvedBy: number | null;
+
+  @Column({
+    name: 'approved_at',
+    type: 'datetime',
+    precision: 3,
+    nullable: true,
+  })
+  approvedAt: Date | null;
+
+  /** 0–100, when the AI suggested the account. */
+  @Column({
+    name: 'ai_confidence',
+    type: 'tinyint',
+    unsigned: true,
+    nullable: true,
+  })
+  aiConfidence: number | null;
+
+  /** The AI's short reason, when it suggested the account. */
+  @Column({
+    name: 'ai_rationale',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
+  aiRationale: string | null;
+
+  @Column({ name: 'ai_run_id', type: 'int', unsigned: true, nullable: true })
+  aiRunId: number | null;
+
+  /** Only for 2510 · Owner draw: personal, distribution or charity. */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  subtag: Subtag | null;
+
+  @Column({ name: 'subtag_note', type: 'varchar', length: 300, nullable: true })
+  subtagNote: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 3 })
   createdAt: Date;

@@ -20,7 +20,31 @@ describe('validateEnv', () => {
       DEMO_ADMIN_PASSWORD: '',
       DEMO_CLIENT_EMAIL: 'client@rxbooks.test',
       DEMO_CLIENT_PASSWORD: '',
+      ANTHROPIC_API_KEY: '',
+      AI_MODEL: 'claude-opus-5-5',
+      AI_EFFORT: 'low',
     });
+  });
+
+  it('reads the AI settings and rejects bad ones', () => {
+    expect(
+      validateEnv({
+        ...valid,
+        ANTHROPIC_API_KEY: ' sk-test ',
+        AI_MODEL: 'claude-sonnet-5-5',
+        AI_EFFORT: 'medium',
+      }),
+    ).toMatchObject({
+      ANTHROPIC_API_KEY: 'sk-test',
+      AI_MODEL: 'claude-sonnet-5-5',
+      AI_EFFORT: 'medium',
+    });
+    expect(() => validateEnv({ ...valid, AI_MODEL: 'gpt-5' })).toThrow(
+      /AI_MODEL/,
+    );
+    expect(() => validateEnv({ ...valid, AI_EFFORT: 'max' })).toThrow(
+      /AI_EFFORT/,
+    );
   });
 
   it('reads optional settings when set', () => {

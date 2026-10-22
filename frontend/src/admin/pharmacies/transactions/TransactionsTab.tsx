@@ -1,61 +1,288 @@
-import { SearchOutlined, UploadOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Flex, Input, Select, Space, Table, Tag, Typography, type TableProps } from 'antd'
+import {
+  CheckOutlined,
+  RobotOutlined,
+  SearchOutlined,
+  SyncOutlined,
+  UndoOutlined,
+  UploadOutlined,
+} from '@ant-design/icons'
+import {
+  Alert,
+  App,
+  Button,
+  Flex,
+  Input,
+  Segmented,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  type TableProps,
+} from 'antd'
 import { useMemo, useState } from 'react'
+import { api, ApiError } from '../../../shared/api.ts'
 import { CellNote } from '../../../shared/CellNote.tsx'
-import { formatDay, type PharmacyAccount } from '../accounts/account.ts'
+import { ACCOUNT_TYPES, TYPE_LABELS, UNCATEGORIZED_CODE } from '../../coa/coa.ts'
+import { useCoa } from '../../coa/useCoa.ts'
+import { RuleFormModal } from '../../rules/RuleFormModal.tsx'
+import type { RuleInput } from '../../rules/rule.ts'
+import { formatDay } from '../accounts/account.ts'
 import { usePharmacyAccounts } from '../accounts/usePharmacyAccounts.ts'
 import { Amount } from './Amount.tsx'
-import { formatMonth, type Transaction, type Upload } from './transaction.ts'
+import {
+  canAskAi,
+  estimateAiCost,
+  formatMonth,
+  LOW_CONFIDENCE,
+  reasonFor,
+  suggestKeyword,
+  type AskAiResult,
+  type CategorizeResult,
+  type ImportResult,
+  type Transaction,
+  type TransactionStatus,
+  type Upload,
+} from './transaction.ts'
 import { UploadModal } from './UploadModal.tsx'
+import { useAiStatus } from './useAiStatus.ts'
 import { useTransactions } from './useTransactions.ts'
 import { useUploads } from './useUploads.ts'
 
 interface Props {
   pharmacyId: number
+  pharmacyName: string
   /** Switches to the accounts tab, for pharmacies with no accounts yet. */
   onAddAccounts: () => void
+}
+
+type View = 'review' | 'approved' | 'all'
+
+const STATUS_TAGS: Record<TransactionStatus, { color: string; label: string }> = {
+  approved: { color: 'green', label: 'Approved' },
+  suggested: { color: 'gold', label: 'To confirm' },
+  uncategorized: { color: 'default', label: 'Uncategorized' },
 }
 
 function matchesSearch(t: Transaction, search: string): boolean {
   const q = search.trim().toLowerCase()
   if (!q) return true
-  return [t.description, t.memo ?? '', t.amount].some((v) => v.toLowerCase().includes(q))
+  return [t.description, t.memo ?? '', t.amount, t.coaLabel].some((v) => v.toLowerCase().includes(q))
 }
 
-/** A pharmacy's transactions by month, the CSV upload, and the upload history. */
-export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** A pharmacy's transactions by month: upload, review and approve their accounts. */
+export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Props) {
   const accountsState = usePharmacyAccounts(pharmacyId).state
+  const coa = useCoa()
   const [accountId, setAccountId] = useState<number | undefined>(undefined)
   const [month, setMonth] = useState<string | undefined>(undefined)
+  const [view, setView] = useState<View>('review')
   const [search, setSearch] = useState('')
   const { state, reload } = useTransactions(pharmacyId, { month, accountId })
   const uploads = useUploads(pharmacyId)
-  const { notification } = App.useApp()
-  // A new key each time the dialog opens, so it starts fresh.
+  const { notification, modal } = App.useApp()
+  const ai = useAiStatus()
+  // A new key each time the upload dialog opens, so it starts fresh.
   const [uploadKey, setUploadKey] = useState<number | null>(null)
+  const [busy, setBusy] = useState<number | 'bulk' | 'run' | 'ai' | null>(null)
+  const [selected, setSelected] = useState<number[]>([])
+  // Set when a person categorized a row and accepted the offer to make a rule.
+  const [ruleDefaults, setRuleDefaults] = useState<Partial<RuleInput> | null>(null)
 
   const accounts = useMemo(() => (accountsState.status === 'ready' ? accountsState.accounts : []), [accountsState])
+  const coaAccounts = useMemo(() => (coa.state.status === 'ready' ? coa.state.accounts : []), [coa.state])
   const openAccounts = accounts.filter((a) => !a.closedOn)
   const accountName = (id: number) => {
     const a = accounts.find((x) => x.id === id)
     return a ? `${a.name} •••• ${a.lastFour}` : `Account ${id}`
   }
   const data = state.status === 'ready' ? state.data : null
-  const rows = useMemo(() => (data ? data.transactions.filter((t) => matchesSearch(t, search)) : []), [data, search])
+  const rows = useMemo(
+    () =>
+      data
+        ? data.transactions.filter(
+            (t) =>
+              matchesSearch(t, search) &&
+              (view === 'all' || (view === 'approved' ? t.status === 'approved' : t.status !== 'approved')),
+          )
+        : [],
+    [data, search, view],
+  )
 
-  const onImported = (upload: Upload) => {
+  /** Accounts a person can pick for a transaction, grouped by type. */
+  const accountOptions = useMemo(
+    () =>
+      ACCOUNT_TYPES.map((type) => ({
+        label: TYPE_LABELS[type],
+        options: coaAccounts
+          .filter((a) => a.type === type && a.isActive && a.categorizable && a.code !== UNCATEGORIZED_CODE)
+          .map((a) => ({ value: a.code, label: a.label })),
+      })).filter((g) => g.options.length > 0),
+    [coaAccounts],
+  )
+
+  const fail = (title: string, err: unknown) =>
+    notification.error({ title, description: err instanceof ApiError ? err.message : 'Please try again.' })
+
+  const refresh = () => {
+    setSelected([])
+    reload()
+  }
+
+  const onImported = (result: ImportResult) => {
     setUploadKey(null)
     setAccountId(undefined)
-    setMonth(upload.months[0])
-    reload()
+    setMonth(result.months[0])
+    setView('review')
+    refresh()
     uploads.reload()
+    const c = result.categorization
     notification.success({
-      title: `Imported ${upload.rowsAdded} transaction${upload.rowsAdded === 1 ? '' : 's'}`,
+      title: `Imported ${plural(result.rowsAdded, 'transaction')}`,
       description:
-        `${accountName(upload.accountId)} · ${upload.months.map(formatMonth).join(', ')}` +
-        (upload.rowsSkipped ? ` · ${upload.rowsSkipped} already loaded` : '') +
-        (upload.rowsHeld ? ` · ${upload.rowsHeld} held for review` : ''),
-      duration: 6,
+        `${accountName(result.accountId)} · ${result.months.map(formatMonth).join(', ')}. ` +
+        `Rules approved ${c.approved}, ${c.suggested} to confirm, ${c.uncategorized} uncategorized.` +
+        (result.rowsSkipped ? ` ${result.rowsSkipped} already loaded.` : '') +
+        (result.rowsHeld ? ` ${result.rowsHeld} held for review.` : ''),
+      duration: 8,
+    })
+  }
+
+  /** A person picks the account: approved as their decision, then offer a rule. */
+  const setAccount = async (t: Transaction, coaCode: string) => {
+    setBusy(t.id)
+    try {
+      await api(`/pharmacies/${pharmacyId}/transactions/${t.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ coaCode }),
+      })
+      refresh()
+      if (coaCode !== UNCATEGORIZED_CODE) {
+        const key = `rule-${t.id}`
+        const keyword = suggestKeyword(t.description)
+        notification.success({
+          key,
+          title: 'Category saved',
+          description: `Want "${keyword}" to go there automatically next time?`,
+          actions: (
+            <Button
+              size="small"
+              type="primary"
+              onClick={() => {
+                notification.destroy(key)
+                setRuleDefaults({
+                  keyword,
+                  coaCode,
+                  sourceNote: `Created from the ${formatDay(t.date)} transaction "${t.description}".`,
+                })
+              }}
+            >
+              Create a rule
+            </Button>
+          ),
+          duration: 10,
+        })
+      }
+    } catch (err) {
+      fail('Could not change the category', err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const approve = async (ids: number[], undo = false) => {
+    setBusy(ids.length === 1 ? ids[0] : 'bulk')
+    try {
+      const res = await api<{ approved?: number; skipped?: number; unapproved?: number }>(
+        `/pharmacies/${pharmacyId}/transactions/${undo ? 'unapprove' : 'approve'}`,
+        { method: 'POST', body: JSON.stringify({ ids }) },
+      )
+      refresh()
+      if (ids.length > 1) {
+        notification.success({
+          title: `Approved ${plural(res.approved ?? 0, 'transaction')}`,
+          description: res.skipped ? `${res.skipped} skipped (already approved or still uncategorized).` : undefined,
+          duration: 4,
+        })
+      }
+    } catch (err) {
+      fail(undo ? 'Could not undo the approval' : 'Could not approve', err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const runRules = async (title?: string) => {
+    if (!data?.month) return
+    setBusy('run')
+    try {
+      const r = await api<CategorizeResult>(`/pharmacies/${pharmacyId}/transactions/categorize`, {
+        method: 'POST',
+        body: JSON.stringify({ month: data.month, accountId }),
+      })
+      refresh()
+      notification.success({
+        title: title ?? `Rules run on ${formatMonth(data.month)}`,
+        description: r.checked
+          ? `Of ${plural(r.checked, 'undecided row')}: ${r.approved} approved, ${r.suggested} to confirm, ${r.uncategorized} still uncategorized.`
+          : 'Every row is already approved or decided by staff.',
+        duration: 6,
+      })
+    } catch (err) {
+      fail('Could not run the rules', err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /** Sends the chosen uncategorized / AI rows to Claude, after a confirmation. */
+  const askAi = (ids: number[]) => {
+    if (!ai?.enabled || ids.length === 0) return
+    modal.confirm({
+      title: `Ask AI about ${plural(ids.length, 'row')}?`,
+      icon: <RobotOutlined />,
+      content: (
+        <>
+          <p style={{ marginTop: 0 }}>
+            Their date, description, memo, amount and last 4 digits go to Claude ({ai.model}). Estimated cost:{' '}
+            {estimateAiCost(ids.length)}.
+          </p>
+          <Typography.Text type="secondary">
+            AI only suggests a category. Nothing is approved until you confirm it.
+          </Typography.Text>
+        </>
+      ),
+      okText: 'Ask AI',
+      onOk: async () => {
+        setBusy('ai')
+        try {
+          const r = await api<AskAiResult>(`/pharmacies/${pharmacyId}/transactions/ai`, {
+            method: 'POST',
+            body: JSON.stringify({ ids }),
+          })
+          refresh()
+          const cost = r.costUsd === null ? '' : ` Cost about $${Number(r.costUsd).toFixed(3)}.`
+          const placed = `AI suggested a category for ${r.suggested} of ${plural(r.sent, 'row')}.`
+          const left = r.unplaced ? ` ${r.unplaced} it couldn't place (still in 9999).` : ''
+          const skipped = r.skipped ? ` ${r.skipped} skipped (approved, or decided by a rule or a person).` : ''
+          if (r.error) {
+            notification.warning({ title: r.error, description: placed + left + skipped + cost, duration: 10 })
+          } else {
+            notification.success({
+              title: 'AI suggestions ready',
+              description: placed + left + skipped + cost,
+              duration: 8,
+            })
+          }
+        } catch (err) {
+          fail('Could not ask AI', err)
+        } finally {
+          setBusy(null)
+        }
+      },
     })
   }
 
@@ -79,25 +306,22 @@ export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
     {
       title: 'Date',
       dataIndex: 'date',
-      width: 120,
+      width: 110,
       render: (d: string) => <span style={{ whiteSpace: 'nowrap' }}>{formatDay(d)}</span>,
     },
-    ...(accountId
-      ? []
-      : [
-          {
-            title: 'Account',
-            dataIndex: 'accountId',
-            render: (id: number) => <Typography.Text type="secondary">{accountName(id)}</Typography.Text>,
-          },
-        ]),
     {
       title: 'Description',
       dataIndex: 'description',
       render: (description: string, t) => (
         <>
           {description}
+          {!accountId && <CellNote>{accountName(t.accountId)}</CellNote>}
           <CellNote>{t.memo}</CellNote>
+          {t.flag === 'unknown_account' && (
+            <Tag color="orange" style={{ marginTop: 4 }}>
+              Unknown account •••• {t.lastFour}
+            </Tag>
+          )}
         </>
       ),
     },
@@ -110,8 +334,65 @@ export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
     },
     {
       title: 'Category',
-      dataIndex: 'coaLabel',
-      render: (label: string, t) => (t.coaCode === '9999' ? <Tag>Uncategorized</Tag> : label),
+      dataIndex: 'coaCode',
+      width: 300,
+      render: (code: string, t) => (
+        <>
+          <Select
+            size="small"
+            value={code}
+            loading={busy === t.id}
+            disabled={busy === t.id}
+            onChange={(next: string) => {
+              if (next !== code) void setAccount(t, next)
+            }}
+            showSearch={{ optionFilterProp: 'label' }}
+            popupMatchSelectWidth={false}
+            options={[{ value: UNCATEGORIZED_CODE, label: '9999 · Uncategorized' }, ...accountOptions]}
+            style={{ width: '100%' }}
+          />
+          <CellNote>{reasonFor(t)}</CellNote>
+          {t.source === 'ai' && (t.aiConfidence ?? 0) < LOW_CONFIDENCE && (
+            <Tag color="orange" style={{ marginTop: 4 }}>
+              Low confidence
+            </Tag>
+          )}
+          {t.subtag && (
+            <Tooltip title={t.subtagNote ?? undefined}>
+              <Tag color="purple" style={{ marginTop: 4 }}>
+                {t.subtag}
+              </Tag>
+            </Tooltip>
+          )}
+        </>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      width: 190,
+      render: (status: TransactionStatus, t) => (
+        <Space size={4} wrap>
+          <Tag color={STATUS_TAGS[status].color}>{STATUS_TAGS[status].label}</Tag>
+          {status === 'suggested' && (
+            <Button size="small" icon={<CheckOutlined />} loading={busy === t.id} onClick={() => approve([t.id])}>
+              Approve
+            </Button>
+          )}
+          {status === 'approved' && (
+            <Button
+              size="small"
+              type="text"
+              icon={<UndoOutlined />}
+              loading={busy === t.id}
+              onClick={() => approve([t.id], true)}
+              title="Take approval back"
+            >
+              Undo
+            </Button>
+          )}
+        </Space>
+      ),
     },
   ]
 
@@ -142,39 +423,96 @@ export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
     },
   ]
 
-  const summary = data?.month ? (
-    <Space size={16} wrap>
-      <Typography.Text strong>
-        {formatMonth(data.month)} · {data.totals.count} transaction{data.totals.count === 1 ? '' : 's'}
-      </Typography.Text>
-      <span>
-        In <Amount value={data.totals.moneyIn} />
-      </span>
-      <span>
-        Out <Amount value={data.totals.moneyOut} />
-      </span>
-    </Space>
-  ) : null
+  const totals = data?.totals
+  const toReview = totals ? totals.suggested + totals.uncategorized : 0
+  const chosen = (data?.transactions ?? []).filter((t) => selected.includes(t.id))
+  const toApprove = chosen.filter((t) => t.status === 'suggested').map((t) => t.id)
+  const forAi = chosen.filter(canAskAi).map((t) => t.id)
+  const uncategorizedShown = rows.filter((t) => t.status === 'uncategorized').map((t) => t.id)
+  const summary =
+    data?.month && totals ? (
+      <Flex justify="space-between" align="center" wrap gap={12}>
+        <Space size={16} wrap>
+          <Typography.Text strong>
+            {formatMonth(data.month)} · {plural(totals.count, 'transaction')}
+          </Typography.Text>
+          <span>
+            In <Amount value={totals.moneyIn} />
+          </span>
+          <span>
+            Out <Amount value={totals.moneyOut} />
+          </span>
+          <Typography.Text type="secondary">
+            {totals.approved} approved · {totals.suggested} to confirm · {totals.uncategorized} uncategorized
+          </Typography.Text>
+        </Space>
+        <Space wrap>
+          {uncategorizedShown.length > 0 && (
+            <Button size="small" type="link" onClick={() => setSelected(uncategorizedShown)}>
+              Select all uncategorized ({uncategorizedShown.length})
+            </Button>
+          )}
+          {selected.length > 0 && (
+            <>
+              <Button size="small" type="link" onClick={() => setSelected([])}>
+                Clear selection
+              </Button>
+              <Button
+                icon={<CheckOutlined />}
+                loading={busy === 'bulk'}
+                disabled={toApprove.length === 0}
+                onClick={() => approve(toApprove)}
+              >
+                Approve ({toApprove.length})
+              </Button>
+              <Tooltip
+                title={
+                  ai && !ai.enabled
+                    ? 'AI is not set up: add ANTHROPIC_API_KEY to the backend .env file.'
+                    : forAi.length === 0
+                      ? 'Only uncategorized rows and earlier AI suggestions can go to AI.'
+                      : undefined
+                }
+              >
+                <Button
+                  type="primary"
+                  icon={<RobotOutlined />}
+                  loading={busy === 'ai'}
+                  disabled={!ai?.enabled || forAi.length === 0}
+                  onClick={() => askAi(forAi)}
+                >
+                  Ask AI ({forAi.length})
+                </Button>
+              </Tooltip>
+            </>
+          )}
+        </Space>
+      </Flex>
+    ) : null
 
   return (
     <>
-      <Flex justify="space-between" align="center" wrap gap={12} style={{ marginBottom: 16 }}>
+      <Flex justify="space-between" align="center" wrap gap={12} style={{ marginBottom: 12 }}>
         <Flex wrap gap={12}>
           <Select<number | 'all'>
             value={accountId ?? 'all'}
             onChange={(v) => {
               setAccountId(v === 'all' ? undefined : v)
               setMonth(undefined)
+              setSelected([])
             }}
             options={[
               { value: 'all', label: 'All accounts' },
-              ...accounts.map((a: PharmacyAccount) => ({ value: a.id, label: accountName(a.id) })),
+              ...accounts.map((a) => ({ value: a.id, label: accountName(a.id) })),
             ]}
             style={{ minWidth: 240 }}
           />
           <Select<string>
             value={data?.month ?? undefined}
-            onChange={setMonth}
+            onChange={(m) => {
+              setMonth(m)
+              setSelected([])
+            }}
             placeholder="No months yet"
             disabled={!data?.months.length}
             options={(data?.months ?? []).map((m) => ({ value: m, label: formatMonth(m) }))}
@@ -183,21 +521,46 @@ export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="Search description or amount"
+            placeholder="Search description, amount or category"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 260 }}
+            style={{ width: 280 }}
           />
         </Flex>
-        <Button
-          type="primary"
-          icon={<UploadOutlined />}
-          onClick={() => setUploadKey(Date.now())}
-          disabled={openAccounts.length === 0}
-        >
-          Upload CSV
-        </Button>
+        <Space wrap>
+          <Button
+            icon={<SyncOutlined />}
+            onClick={() => runRules()}
+            loading={busy === 'run'}
+            disabled={!data?.month}
+            title="Apply the current rules to rows nobody has decided yet"
+          >
+            Run rules again
+          </Button>
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={() => setUploadKey(Date.now())}
+            disabled={openAccounts.length === 0}
+          >
+            Upload CSV
+          </Button>
+        </Space>
       </Flex>
+
+      <Segmented<View>
+        value={view}
+        onChange={(v) => {
+          setView(v)
+          setSelected([])
+        }}
+        options={[
+          { value: 'review', label: `To review${totals ? ` (${toReview})` : ''}` },
+          { value: 'approved', label: `Approved${totals ? ` (${totals.approved})` : ''}` },
+          { value: 'all', label: 'All' },
+        ]}
+        style={{ marginBottom: 12 }}
+      />
 
       {state.status === 'error' ? (
         <Alert
@@ -218,11 +581,19 @@ export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
           dataSource={rows}
           loading={state.status === 'loading'}
           pagination={{ pageSize: 50, hideOnSinglePage: true, showSizeChanger: false }}
-          scroll={{ x: 760 }}
+          scroll={{ x: 960 }}
+          rowSelection={{
+            selectedRowKeys: selected,
+            onChange: (keys) => setSelected(keys as number[]),
+            // Approved rows are final; take approval back first to change them.
+            getCheckboxProps: (t) => ({ disabled: t.status === 'approved' }),
+          }}
           locale={{
-            emptyText: data?.months.length
-              ? 'No transactions match your search.'
-              : 'No transactions yet. Upload a bank or card CSV to start.',
+            emptyText: !data?.months.length
+              ? 'No transactions yet. Upload a bank or card CSV to start.'
+              : view === 'review' && !search
+                ? `Nothing left to review in ${data.month ? formatMonth(data.month) : 'this month'}.`
+                : 'No transactions match.',
           }}
           title={summary ? () => summary : undefined}
         />
@@ -256,6 +627,20 @@ export function TransactionsTab({ pharmacyId, onAddAccounts }: Props) {
           onImported={onImported}
         />
       )}
+
+      <RuleFormModal
+        open={ruleDefaults !== null}
+        rule={null}
+        pharmacyId={pharmacyId}
+        listName={pharmacyName}
+        accounts={coaAccounts}
+        defaults={ruleDefaults ?? undefined}
+        onClose={() => setRuleDefaults(null)}
+        onSaved={(saved) => {
+          setRuleDefaults(null)
+          void runRules(`Rule ${saved.keyword} added`)
+        }}
+      />
     </>
   )
 }

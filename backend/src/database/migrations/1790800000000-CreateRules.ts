@@ -12,7 +12,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * Rules are never deleted: retired_at hides a rule and stops it matching.
  * Only one active rule per keyword per library (scope_id + active_flag).
  */
-type Seed = [
+export type SharedRuleSeed = [
   priority: number,
   keyword: string,
   coaCode: string,
@@ -22,7 +22,7 @@ type Seed = [
   sourceNote: string | null,
 ];
 
-const SHARED_RULES: Seed[] = [
+export const SHARED_RULES: SharedRuleSeed[] = [
   [
     10,
     'MCKESSON',

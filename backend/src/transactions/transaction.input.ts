@@ -1,5 +1,8 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
@@ -42,6 +45,33 @@ export class TransactionsQuery {
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt({ message: 'Choose an account.' })
+  accountId?: number;
+}
+
+/** A person chooses the account. 9999 puts the row back to uncategorized. */
+export class SetAccountInput {
+  @Matches(/^\d{4}$/, { message: 'Choose the account.' })
+  coaCode: string;
+}
+
+/** Several transactions at once, e.g. to approve them. */
+export class TransactionIdsInput {
+  @IsArray({ message: 'Choose the transactions.' })
+  @ArrayMinSize(1, { message: 'Choose at least one transaction.' })
+  @ArrayMaxSize(1000, {
+    message: 'Choose at most 1000 transactions at a time.',
+  })
+  @IsInt({ each: true, message: 'Choose the transactions.' })
+  ids: number[];
+}
+
+/** Run the rules again on one month (and optionally one account). */
+export class CategorizeInput {
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Use a month like 2025-01.' })
+  month: string;
+
+  @IsOptional()
   @IsInt({ message: 'Choose an account.' })
   accountId?: number;
 }

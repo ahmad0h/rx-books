@@ -12,6 +12,10 @@ import { UsersService } from '../users/users.service.js';
 import { BankTransaction } from './bank-transaction.entity.js';
 import { readBankFile, type BankFormat } from './bank-formats.js';
 import {
+  CategorizationService,
+  type CategorizeResult,
+} from './categorization.service.js';
+import {
   fileFingerprint,
   fingerprint,
   type FingerprintedRow,
@@ -69,6 +73,11 @@ export interface UploadView {
   createdAt: Date;
 }
 
+/** The upload, plus what the rules did with its new rows. */
+export interface ImportResult extends UploadView {
+  categorization: CategorizeResult;
+}
+
 interface Analysis {
   preview: UploadPreview;
   format: BankFormat;
@@ -91,6 +100,7 @@ export class UploadsService {
     private readonly pharmacies: Repository<Pharmacy>,
     private readonly users: UsersService,
     private readonly dataSource: DataSource,
+    private readonly categorization: CategorizationService,
   ) {}
 
   /** Reads and checks the file. Nothing is saved. */
@@ -101,12 +111,15 @@ export class UploadsService {
     return (await this.analyze(pharmacyId, input)).preview;
   }
 
-  /** Saves the new rows, all in 9999 · Uncategorized, with a record of the upload. */
+  /**
+   * Saves the new rows with a record of the upload, then runs the rules on
+   * them. Rows the rules don't recognise stay in 9999 · Uncategorized.
+   */
   async import(
     pharmacyId: number,
     input: UploadFileInput,
     userId: number,
-  ): Promise<UploadView> {
+  ): Promise<ImportResult> {
     const { preview, format, rows } = await this.analyze(pharmacyId, input);
     const added = rows.filter((r) => r.status === 'new');
     if (added.length === 0) {
@@ -157,13 +170,26 @@ export class UploadsService {
               occurrence: row.occurrence,
               coaCode: '9999',
               status: 'uncategorized',
+              source: null,
+              ruleId: null,
+              flag: null,
+              approvedBy: null,
+              approvedAt: null,
+              aiConfidence: null,
+              aiRationale: null,
+              aiRunId: null,
+              subtag: null,
+              subtagNote: null,
             }),
           ),
           { chunk: 500 },
         );
         return saved;
       });
-      return (await this.views([upload]))[0];
+      const categorization = await this.categorization.run(pharmacyId, {
+        uploadId: upload.id,
+      });
+      return { ...(await this.views([upload]))[0], categorization };
     } catch (error) {
       if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
         throw new ConflictException(

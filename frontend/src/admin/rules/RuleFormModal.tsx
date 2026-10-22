@@ -13,6 +13,8 @@ interface Props {
   /** Shown in the title, e.g. "shared" or the pharmacy name. */
   listName: string
   accounts: CoaAccount[]
+  /** Starting values for a new rule, e.g. from a transaction a person just categorized. */
+  defaults?: Partial<RuleInput>
   onClose: () => void
   onSaved: (saved: Rule, wasNew: boolean) => void
 }
@@ -20,7 +22,7 @@ interface Props {
 /** Transfers and balance-sheet accounts always need a person to confirm. */
 const BALANCE_SHEET = new Set(['asset', 'liability', 'equity'])
 
-export function RuleFormModal({ open, rule, pharmacyId, listName, accounts, onClose, onSaved }: Props) {
+export function RuleFormModal({ open, rule, pharmacyId, listName, accounts, defaults, onClose, onSaved }: Props) {
   const [form] = Form.useForm<RuleInput>()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -97,7 +99,13 @@ export function RuleFormModal({ open, rule, pharmacyId, listName, accounts, onCl
                 autoApprove: rule.autoApprove,
                 sourceNote: rule.sourceNote,
               }
-            : { autoApprove: true }
+            : {
+                ...defaults,
+                // A transfer or balance-sheet account never auto-approves.
+                autoApprove:
+                  defaults?.autoApprove ??
+                  !BALANCE_SHEET.has(accounts.find((a) => a.code === defaults?.coaCode)?.type ?? ''),
+              }
         }
       >
         <Form.Item

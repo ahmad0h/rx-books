@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { AdminHomePage } from './admin/AdminHomePage.tsx'
 import { AdminLayout } from './admin/AdminLayout.tsx'
+import { AiPage } from './admin/ai/AiPage.tsx'
 import { CoaPage } from './admin/coa/CoaPage.tsx'
 import { PharmaciesPage } from './admin/pharmacies/PharmaciesPage.tsx'
 import { PharmacyPage } from './admin/pharmacies/PharmacyPage.tsx'
@@ -29,6 +30,7 @@ const router = createBrowserRouter([
       { path: 'pharmacies/:id', element: <PharmacyPage /> },
       { path: 'chart-of-accounts', element: <CoaPage /> },
       { path: 'rules', element: <RulesPage /> },
+      { path: 'ai', element: <AiPage /> },
     ],
   },
   {

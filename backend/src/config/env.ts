@@ -19,7 +19,16 @@ export interface AppEnv extends DatabaseEnv {
   DEMO_ADMIN_PASSWORD: string;
   DEMO_CLIENT_EMAIL: string;
   DEMO_CLIENT_PASSWORD: string;
+  /** Key for Claude (AI suggestions). Empty = AI is switched off. */
+  ANTHROPIC_API_KEY: string;
+  /** Claude model for AI suggestions. */
+  AI_MODEL: string;
+  /** How hard the model thinks: low suits classification and keeps it fast and cheap. */
+  AI_EFFORT: AiEffort;
 }
+
+export const AI_EFFORTS = ['low', 'medium', 'high'] as const;
+export type AiEffort = (typeof AI_EFFORTS)[number];
 
 /** Environment values arrive as strings; anything else is treated as unset. */
 function text(value: unknown, fallback: string): string {
@@ -91,6 +100,15 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     );
   }
 
+  const aiModel = text(raw.AI_MODEL, '').trim() || 'claude-opus-5-5';
+  if (!/^claude-[a-z0-9.-]+$/.test(aiModel)) {
+    throw new Error('AI_MODEL must be a Claude model id, e.g. claude-opus-5-5');
+  }
+  const aiEffort = text(raw.AI_EFFORT, '').trim() || 'low';
+  if (!(AI_EFFORTS as readonly string[]).includes(aiEffort)) {
+    throw new Error(`AI_EFFORT must be one of ${AI_EFFORTS.join(', ')}`);
+  }
+
   return {
     ...validateDatabaseEnv(raw),
     PORT: integer(raw.PORT, 3000, 'PORT', 1, 65535),
@@ -103,5 +121,8 @@ export function validateEnv(raw: Record<string, unknown>): AppEnv {
     DEMO_ADMIN_PASSWORD: demoAdminPassword,
     DEMO_CLIENT_EMAIL: text(raw.DEMO_CLIENT_EMAIL, 'client@rxbooks.test'),
     DEMO_CLIENT_PASSWORD: demoClientPassword,
+    ANTHROPIC_API_KEY: text(raw.ANTHROPIC_API_KEY, '').trim(),
+    AI_MODEL: aiModel,
+    AI_EFFORT: aiEffort as AiEffort,
   };
 }

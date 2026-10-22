@@ -23,7 +23,7 @@ import {
   formatMonth,
   MAX_FILE_BYTES,
   type RowStatus,
-  type Upload,
+  type ImportResult,
   type UploadPreview,
 } from './transaction.ts'
 
@@ -33,7 +33,7 @@ interface Props {
   /** Open accounts only; closed ones take no uploads. */
   accounts: PharmacyAccount[]
   onClose: () => void
-  onImported: (upload: Upload) => void
+  onImported: (result: ImportResult) => void
 }
 
 const STATUS_TAGS: Record<RowStatus, { color: string; label: string }> = {
@@ -73,7 +73,7 @@ export function UploadModal({ open, pharmacyId, accounts, onClose, onImported }:
   }
 
   const runPreview = () => call<UploadPreview>(`/pharmacies/${pharmacyId}/uploads/preview`, setPreview)
-  const runImport = () => call<Upload>(`/pharmacies/${pharmacyId}/uploads`, onImported)
+  const runImport = () => call<ImportResult>(`/pharmacies/${pharmacyId}/uploads`, onImported)
 
   const columns: TableProps<Row>['columns'] = [
     { title: 'Line', dataIndex: 'line', width: 64 },

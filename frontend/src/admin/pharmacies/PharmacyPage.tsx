@@ -77,7 +77,11 @@ export function PharmacyPage() {
             key: 'transactions',
             label: 'Transactions',
             children: (
-              <TransactionsTab pharmacyId={pharmacy.id} onAddAccounts={() => setSearch({ tab: 'accounts' })} />
+              <TransactionsTab
+                pharmacyId={pharmacy.id}
+                pharmacyName={pharmacy.name}
+                onAddAccounts={() => setSearch({ tab: 'accounts' })}
+              />
             ),
           },
           { key: 'accounts', label: 'Bank & card accounts', children: <AccountsTab pharmacyId={pharmacy.id} /> },

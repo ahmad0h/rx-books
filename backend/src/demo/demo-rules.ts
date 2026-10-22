@@ -4,27 +4,28 @@ export type DemoRule = Omit<CreateRuleInput, 'pharmacyId'>;
 
 /**
  * Made-up rules for the demo pharmacy, written to match the demo bank
- * statements in the handoff (03_Data Model & Samples). They show a pharmacy
- * rule overriding a shared one, direction words in keywords, and rules that
- * need a person to confirm.
+ * statements in the handoff (03_Data Model & Samples) and its expected
+ * categorization table. They show direction words in keywords, a pharmacy
+ * rule alongside a shared one, and rules that need a person to confirm.
  */
 export const DEMO_RULES: DemoRule[] = [
   {
     priority: 10,
     keyword: 'DEPOSIT INDEPENDENT PHAR',
-    coaCode: '4010',
-    tag: 'PSAO_REMIT',
+    coaCode: '5090',
+    tag: 'COOP_REBATE',
     autoApprove: true,
-    sourceNote: 'Co-op (PSAO) passing on PBM claim payments. Deposit side.',
+    sourceNote:
+      'Co-op rebates paid to the pharmacy. They lower drug cost (5090 offsets 5010).',
   },
   {
     priority: 20,
     keyword: 'WITHDRAWAL INDEPENDENT PHAR',
-    coaCode: '5010',
-    tag: 'COOP_PURCHASE',
+    coaCode: '5090',
+    tag: 'COOP_REBATE_ADJ',
     autoApprove: true,
     sourceNote:
-      'Drug purchases through the co-op. Same name as the deposit rule: the direction word tells them apart.',
+      'Rebate adjustments the co-op takes back. Same vendor as the deposit rule: the direction word keeps them separate.',
   },
   {
     priority: 30,
@@ -46,11 +47,11 @@ export const DEMO_RULES: DemoRule[] = [
   {
     priority: 50,
     keyword: 'MERCHANT SERVICE',
-    coaCode: '4040',
-    tag: 'FRONT_END',
+    coaCode: '4030',
+    tag: 'CARD_SETTLEMENT',
     autoApprove: true,
     sourceNote:
-      'Card deposits here are front-store sales. Overrides the shared MERCHANT SERVICE rule (4030).',
+      'Card settlement deposits: patient payments and co-pays taken at the register.',
   },
   {
     priority: 60,
@@ -72,10 +73,11 @@ export const DEMO_RULES: DemoRule[] = [
   {
     priority: 80,
     keyword: 'AUTOMATIC PAYMENT - THANK',
-    coaCode: '2010',
+    coaCode: '1010',
     tag: 'CARD_PAYMENT',
     autoApprove: false,
-    sourceNote: 'The same card payment, as it shows on the card statement.',
+    sourceNote:
+      'The card payment as the card statement shows it: money in from checking (1010). A transfer, so staff confirm it.',
   },
   {
     priority: 90,

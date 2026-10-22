@@ -2,6 +2,13 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, FindOperator } from 'typeorm';
+import { AiPrompt } from '../src/ai/ai-prompt.entity.js';
+import { AiRun } from '../src/ai/ai-run.entity.js';
+import {
+  ClaudeClient,
+  type ClassifyRequest,
+  type ClassifyResult,
+} from '../src/ai/claude.client.js';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { hashPassword } from '../src/auth/password.js';
@@ -409,10 +416,12 @@ export class InMemoryTable<T extends { id: number; createdAt: Date }> {
   save(input: T[], options?: object): Promise<T[]>;
   save(input: T | T[]): Promise<T | T[]> {
     const items = Array.isArray(input) ? input : [input];
+    const stored = (item: T) =>
+      item.id ? this.rows.find((r) => r.id === item.id) : undefined;
     const key = this.unique;
     if (key) {
       const seen = new Set(this.rows.map((r) => r[key]));
-      for (const item of items) {
+      for (const item of items.filter((i) => !stored(i))) {
         if (seen.has(item[key])) {
           return Promise.reject(
             Object.assign(new Error('Duplicate entry'), {
@@ -424,6 +433,11 @@ export class InMemoryTable<T extends { id: number; createdAt: Date }> {
       }
     }
     const saved = items.map((item) => {
+      const existing = stored(item);
+      if (existing) {
+        Object.assign(existing, item);
+        return { ...existing };
+      }
       const row = {
         ...item,
         id: this.rows.length + 1,
@@ -436,6 +450,28 @@ export class InMemoryTable<T extends { id: number; createdAt: Date }> {
   }
 }
 
+/**
+ * Stands in for Claude: records every request and answers with `respond`,
+ * so tests never call the API or spend money.
+ */
+export class FakeClaude {
+  enabled = true;
+  model = 'claude-opus-5-5';
+  calls: ClassifyRequest[] = [];
+  respond: (
+    request: ClassifyRequest,
+  ) => ClassifyResult | Promise<ClassifyResult> = () => ({
+    text: JSON.stringify({ suggestions: [] }),
+    model: this.model,
+    usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  });
+
+  classify(request: ClassifyRequest): Promise<ClassifyResult> {
+    this.calls.push(request);
+    return Promise.resolve(this.respond(request));
+  }
+}
+
 /** The real app with the database replaced by fakes, so tests need no MySQL. */
 export async function createTestApp() {
   const users = new InMemoryUserRepository();
@@ -445,6 +481,14 @@ export async function createTestApp() {
   const accounts = new InMemoryPharmacyAccountRepository();
   const uploads = new InMemoryTable<TransactionUpload>();
   const transactions = new InMemoryTable<BankTransaction>('sourceRowId');
+  const aiPrompts = new InMemoryTable<AiPrompt>('version');
+  const aiRuns = new InMemoryTable<AiRun>();
+  const claude = new FakeClaude();
+  void aiPrompts.save({
+    version: 1,
+    body: 'TEST INSTRUCTIONS: categorize pharmacy bank transactions carefully.',
+    createdBy: null,
+  } as AiPrompt);
   const manager = {
     getRepository: (entity: unknown) =>
       new Map<unknown, unknown>([
@@ -479,6 +523,12 @@ export async function createTestApp() {
     .useValue(uploads)
     .overrideProvider(getRepositoryToken(BankTransaction))
     .useValue(transactions)
+    .overrideProvider(getRepositoryToken(AiPrompt))
+    .useValue(aiPrompts)
+    .overrideProvider(getRepositoryToken(AiRun))
+    .useValue(aiRuns)
+    .overrideProvider(ClaudeClient)
+    .useValue(claude)
     .compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
@@ -493,6 +543,9 @@ export async function createTestApp() {
     accounts,
     uploads,
     transactions,
+    aiPrompts,
+    aiRuns,
+    claude,
     dataSource,
   };
 }

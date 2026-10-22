@@ -53,6 +53,10 @@ services:
       DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-}
       DEMO_CLIENT_EMAIL: ${DEMO_CLIENT_EMAIL:-client@rxbooks.test}
       DEMO_CLIENT_PASSWORD: ${DEMO_CLIENT_PASSWORD:-}
+      # AI suggestions (Claude). Leave ANTHROPIC_API_KEY empty to switch AI off.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
+      AI_EFFORT: ${AI_EFFORT:-low}
     depends_on:
       mysql:
         condition: service_healthy

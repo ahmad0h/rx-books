@@ -1,6 +1,8 @@
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import type { DataSourceOptions } from 'typeorm';
 import type { DatabaseEnv } from '../config/env.js';
+import { AiPrompt } from '../ai/ai-prompt.entity.js';
+import { AiRun } from '../ai/ai-run.entity.js';
 import { CoaAccount } from '../coa/coa-account.entity.js';
 import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
 import { PharmacyAccount } from '../pharmacy-accounts/pharmacy-account.entity.js';
@@ -16,6 +18,8 @@ import { CreateRules1790800000000 } from './migrations/1790800000000-CreateRules
 import { CreatePharmacyAccounts1790900000000 } from './migrations/1790900000000-CreatePharmacyAccounts.js';
 import { AddSecondChecking1791000000000 } from './migrations/1791000000000-AddSecondChecking.js';
 import { CreateTransactions1791100000000 } from './migrations/1791100000000-CreateTransactions.js';
+import { AddCategorization1791200000000 } from './migrations/1791200000000-AddCategorization.js';
+import { AddAiSuggestions1791300000000 } from './migrations/1791300000000-AddAiSuggestions.js';
 
 /** Every table the app uses. Add new entities here. */
 export const ENTITIES = [
@@ -26,6 +30,8 @@ export const ENTITIES = [
   PharmacyAccount,
   TransactionUpload,
   BankTransaction,
+  AiPrompt,
+  AiRun,
 ];
 
 /** Every migration, oldest first. Add new migrations here. */
@@ -38,6 +44,8 @@ export const MIGRATIONS = [
   CreatePharmacyAccounts1790900000000,
   AddSecondChecking1791000000000,
   CreateTransactions1791100000000,
+  AddCategorization1791200000000,
+  AddAiSuggestions1791300000000,
 ];
 
 /** Plain TypeORM settings, shared by the app and the migration command line. */

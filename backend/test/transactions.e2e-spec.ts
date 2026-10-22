@@ -229,7 +229,7 @@ describe('Transaction upload (e2e)', () => {
     const jan = await admin()
       .get(`${base()}/transactions?month=2025-01&accountId=${card}`)
       .expect(200);
-    expect(jan.body.totals).toEqual({
+    expect(jan.body.totals).toMatchObject({
       count: 11,
       moneyIn: '3120.40',
       moneyOut: '-2594.32',
