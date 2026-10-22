@@ -8,6 +8,7 @@ import { PharmacyPage } from './admin/pharmacies/PharmacyPage.tsx'
 import { RulesPage } from './admin/rules/RulesPage.tsx'
 import { ClientHomePage } from './client/ClientHomePage.tsx'
 import { ClientLayout } from './client/ClientLayout.tsx'
+import { QuestionsPage } from './client/questions/QuestionsPage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { RootRedirect } from './pages/RootRedirect.tsx'
@@ -36,7 +37,10 @@ const router = createBrowserRouter([
   {
     path: '/client',
     element: <ClientLayout />,
-    children: [{ index: true, element: <ClientHomePage /> }],
+    children: [
+      { index: true, element: <ClientHomePage /> },
+      { path: 'questions', element: <QuestionsPage /> },
+    ],
   },
   { path: '*', element: <NotFoundPage /> },
 ])

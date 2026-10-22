@@ -9,6 +9,7 @@ import { PharmacyAccount } from '../pharmacy-accounts/pharmacy-account.entity.js
 import { PharmacyAccountsService } from '../pharmacy-accounts/pharmacy-accounts.service.js';
 import { Rule } from '../rules/rule.entity.js';
 import { RulesService } from '../rules/rules.service.js';
+import { User } from '../users/user.entity.js';
 import { DEMO_ACCOUNTS } from './demo-accounts.js';
 import { DEMO_RULES } from './demo-rules.js';
 
@@ -16,7 +17,8 @@ export const DEMO_PHARMACY = 'Lakeside Community Pharmacy';
 
 /**
  * In local development (DEMO_USERS_ENABLED=true) makes sure the demo pharmacy
- * exists with its sample bank accounts and rules, matching the demo statements
+ * exists with its sample bank accounts and rules, and the demo client user is
+ * its owner, matching the demo statements
  * in the handoff. Each part is added only when the pharmacy has none yet, so
  * changes made in the app are left alone.
  */
@@ -31,6 +33,8 @@ export class DemoDataSeeder implements OnApplicationBootstrap {
     private readonly ruleRepo: Repository<Rule>,
     @InjectRepository(PharmacyAccount)
     private readonly accountRepo: Repository<PharmacyAccount>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly pharmacies: PharmaciesService,
     private readonly rules: RulesService,
     private readonly accounts: PharmacyAccountsService,
@@ -59,6 +63,20 @@ export class DemoDataSeeder implements OnApplicationBootstrap {
         ownerEmail: 'owner@lakeside-pharmacy.test',
       });
       this.logger.log(`Created demo pharmacy ${DEMO_PHARMACY}`);
+    }
+
+    // The demo client signs in as Lakeside's owner, to answer owner questions.
+    const demoClient = await this.userRepo.findOne({
+      where: { email: this.config.get('DEMO_CLIENT_EMAIL', { infer: true }) },
+    });
+    if (demoClient && demoClient.role === 'client' && !demoClient.pharmacyId) {
+      await this.userRepo.update(
+        { id: demoClient.id },
+        { pharmacyId: pharmacy.id },
+      );
+      this.logger.log(
+        `Linked demo client ${demoClient.email} to ${DEMO_PHARMACY}`,
+      );
     }
 
     if (!(await this.accountRepo.existsBy({ pharmacyId: pharmacy.id }))) {

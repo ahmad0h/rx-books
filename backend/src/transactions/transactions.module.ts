@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CoaModule } from '../coa/coa.module.js';
+import { OwnerQuestion } from '../owner-questions/owner-question.entity.js';
 import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
 import { PharmacyAccount } from '../pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../rules/rule.entity.js';
@@ -20,6 +21,7 @@ import { UploadsService } from './uploads.service.js';
       PharmacyAccount,
       Pharmacy,
       Rule,
+      OwnerQuestion,
     ]),
     CoaModule,
     UsersModule,

@@ -16,7 +16,7 @@ export interface Transaction {
   coaLabel: string
   status: TransactionStatus
   /** How the account was chosen; null while uncategorized. */
-  source: 'rule' | 'own_account' | 'ai' | 'staff' | null
+  source: 'rule' | 'own_account' | 'ai' | 'staff' | 'owner' | null
   ruleId: number | null
   ruleKeyword: string | null
   flag: 'unknown_account' | null
@@ -30,6 +30,47 @@ export interface Transaction {
   /** Only for 2510 · Owner draw. */
   subtag: 'personal' | 'distribution' | 'charity' | null
   subtagNote: string | null
+  /** The latest question to the owner about this row, if any. */
+  question: OwnerQuestion | null
+}
+
+export type QuestionStatus = 'waiting' | 'answered' | 'accepted' | 'overridden' | 'cancelled'
+
+/** A question to the pharmacy owner, as staff see it. */
+export interface OwnerQuestion {
+  id: number
+  status: QuestionStatus
+  askedAt: string
+  suggestedCode: string | null
+  suggestedLabel: string | null
+  staffNote: string | null
+  /** The owner's pick; null until answered, or when they said "not sure". */
+  answerCode: string | null
+  answerLabel: string | null
+  answerUnsure: boolean
+  answerNote: string | null
+  willSendDocument: boolean
+  answeredAt: string | null
+}
+
+/** Waiting for the owner, or answered but not yet accepted. */
+export function hasOpenQuestion(t: Transaction): boolean {
+  return t.question?.status === 'waiting' || t.question?.status === 'answered'
+}
+
+/** Rows that can be asked about: not approved, and no open question already. */
+export function canAskOwner(t: Transaction): boolean {
+  return t.status !== 'approved' && !hasOpenQuestion(t)
+}
+
+/** PRD: about 5 questions per pharmacy per month; more is allowed, with a warning. */
+export const QUESTIONS_SOFT_CAP = 5
+
+/** What "Ask owner" returns. */
+export interface AskOwnerResult {
+  asked: number
+  openByMonth: Record<string, number>
+  overSoftCap: string[]
 }
 
 /** Below this, an AI suggestion is marked "low confidence". */
@@ -81,6 +122,8 @@ export interface TransactionMonth {
     approved: number
     suggested: number
     uncategorized: number
+    questionsWaiting: number
+    questionsAnswered: number
   }
 }
 
@@ -164,6 +207,8 @@ export function reasonFor(t: Transaction): string | null {
       return `AI · ${t.aiConfidence ?? 0}%${t.aiRationale ? ` · ${t.aiRationale}` : ''}` + approver
     case 'staff':
       return `Chosen by ${t.approvedBy ?? 'staff'}`
+    case 'owner':
+      return `Owner confirmed${t.approvedBy ? ` · accepted by ${t.approvedBy}` : ''}`
     default:
       // The AI was asked but couldn't place it.
       return t.aiRunId !== null ? `AI couldn't place it${t.aiRationale ? `: ${t.aiRationale}` : ''}` : null
@@ -186,12 +231,18 @@ const PAYMENT_WORDS = new Set([
   'ACH',
   'DEBIT',
   'CREDIT',
+  'ZELLE',
+  'INSTANT',
+  'TRANSFER',
+  'TO',
+  'FROM',
 ])
 
 /**
  * A starting keyword for a rule made from a transaction: the vendor part of the
  * description, without leading payment words or numbers. "ELECTRONIC WITHDRAWAL
- * XCEL ENERGY" → "XCEL ENERGY", "COSTCO GAS #0999" → "COSTCO GAS". The person can edit it.
+ * XCEL ENERGY" → "XCEL ENERGY", "COSTCO GAS #0999" → "COSTCO GAS",
+ * "ZELLE INSTANT PMT TO JORDAN LEE" → "JORDAN LEE". The person can edit it.
  */
 export function suggestKeyword(description: string): string {
   const words = description.toUpperCase().split(/\s+/).filter(Boolean)

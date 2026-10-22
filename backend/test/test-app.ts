@@ -13,6 +13,7 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { hashPassword } from '../src/auth/password.js';
 import { CoaAccount } from '../src/coa/coa-account.entity.js';
+import { OwnerQuestion } from '../src/owner-questions/owner-question.entity.js';
 import { Pharmacy } from '../src/pharmacies/pharmacy.entity.js';
 import { PharmacyAccount } from '../src/pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../src/rules/rule.entity.js';
@@ -388,7 +389,7 @@ export class InMemoryPharmacyAccountRepository {
  * and transactions code. `unique` names a column that must not repeat,
  * like a unique index (a clash throws ER_DUP_ENTRY).
  */
-export class InMemoryTable<T extends { id: number; createdAt: Date }> {
+export class InMemoryTable<T extends { id: number }> {
   rows: T[] = [];
 
   constructor(private readonly unique?: keyof T) {}
@@ -442,7 +443,7 @@ export class InMemoryTable<T extends { id: number; createdAt: Date }> {
         ...item,
         id: this.rows.length + 1,
         createdAt: new Date(),
-      };
+      } as T;
       this.rows.push(row);
       return { ...row };
     });
@@ -483,6 +484,7 @@ export async function createTestApp() {
   const transactions = new InMemoryTable<BankTransaction>('sourceRowId');
   const aiPrompts = new InMemoryTable<AiPrompt>('version');
   const aiRuns = new InMemoryTable<AiRun>();
+  const questions = new InMemoryTable<OwnerQuestion>();
   const claude = new FakeClaude();
   void aiPrompts.save({
     version: 1,
@@ -527,6 +529,8 @@ export async function createTestApp() {
     .useValue(aiPrompts)
     .overrideProvider(getRepositoryToken(AiRun))
     .useValue(aiRuns)
+    .overrideProvider(getRepositoryToken(OwnerQuestion))
+    .useValue(questions)
     .overrideProvider(ClaudeClient)
     .useValue(claude)
     .compile();
@@ -545,6 +549,7 @@ export async function createTestApp() {
     transactions,
     aiPrompts,
     aiRuns,
+    questions,
     claude,
     dataSource,
   };

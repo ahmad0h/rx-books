@@ -18,12 +18,13 @@ export const TRANSACTION_STATUSES = [
 ] as const;
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number];
 
-/** How the account was chosen. A later phase adds "client". */
+/** How the account was chosen ("owner" = the owner's answer, accepted by staff). */
 export const TRANSACTION_SOURCES = [
   'rule',
   'own_account',
   'ai',
   'staff',
+  'owner',
 ] as const;
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
 

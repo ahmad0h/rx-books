@@ -4,6 +4,7 @@ import type { DatabaseEnv } from '../config/env.js';
 import { AiPrompt } from '../ai/ai-prompt.entity.js';
 import { AiRun } from '../ai/ai-run.entity.js';
 import { CoaAccount } from '../coa/coa-account.entity.js';
+import { OwnerQuestion } from '../owner-questions/owner-question.entity.js';
 import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
 import { PharmacyAccount } from '../pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../rules/rule.entity.js';
@@ -20,6 +21,7 @@ import { AddSecondChecking1791000000000 } from './migrations/1791000000000-AddSe
 import { CreateTransactions1791100000000 } from './migrations/1791100000000-CreateTransactions.js';
 import { AddCategorization1791200000000 } from './migrations/1791200000000-AddCategorization.js';
 import { AddAiSuggestions1791300000000 } from './migrations/1791300000000-AddAiSuggestions.js';
+import { CreateOwnerQuestions1791400000000 } from './migrations/1791400000000-CreateOwnerQuestions.js';
 
 /** Every table the app uses. Add new entities here. */
 export const ENTITIES = [
@@ -32,6 +34,7 @@ export const ENTITIES = [
   BankTransaction,
   AiPrompt,
   AiRun,
+  OwnerQuestion,
 ];
 
 /** Every migration, oldest first. Add new migrations here. */
@@ -46,6 +49,7 @@ export const MIGRATIONS = [
   CreateTransactions1791100000000,
   AddCategorization1791200000000,
   AddAiSuggestions1791300000000,
+  CreateOwnerQuestions1791400000000,
 ];
 
 /** Plain TypeORM settings, shared by the app and the migration command line. */

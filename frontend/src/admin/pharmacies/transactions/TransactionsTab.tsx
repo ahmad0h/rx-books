@@ -1,5 +1,6 @@
 import {
   CheckOutlined,
+  QuestionCircleOutlined,
   RobotOutlined,
   SearchOutlined,
   SyncOutlined,
@@ -31,14 +32,17 @@ import type { RuleInput } from '../../rules/rule.ts'
 import { formatDay } from '../accounts/account.ts'
 import { usePharmacyAccounts } from '../accounts/usePharmacyAccounts.ts'
 import { Amount } from './Amount.tsx'
+import { AskOwnerModal } from './AskOwnerModal.tsx'
 import {
   canAskAi,
+  canAskOwner,
   estimateAiCost,
   formatMonth,
   LOW_CONFIDENCE,
   reasonFor,
   suggestKeyword,
   type AskAiResult,
+  type AskOwnerResult,
   type CategorizeResult,
   type ImportResult,
   type Transaction,
@@ -91,6 +95,8 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
   const [selected, setSelected] = useState<number[]>([])
   // Set when a person categorized a row and accepted the offer to make a rule.
   const [ruleDefaults, setRuleDefaults] = useState<Partial<RuleInput> | null>(null)
+  // Rows in the "Ask owner" dialog, while it is open.
+  const [askingOwner, setAskingOwner] = useState<Transaction[] | null>(null)
 
   const accounts = useMemo(() => (accountsState.status === 'ready' ? accountsState.accounts : []), [accountsState])
   const coaAccounts = useMemo(() => (coa.state.status === 'ready' ? coa.state.accounts : []), [coa.state])
@@ -151,6 +157,82 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
     })
   }
 
+  /** After a person (or the owner) decided a row: offer a rule so it's automatic next time. */
+  const offerRule = (t: Transaction, coaCode: string, title: string, why?: string) => {
+    const key = `rule-${t.id}`
+    const keyword = suggestKeyword(t.description)
+    notification.success({
+      key,
+      title,
+      description: `Want "${keyword}" to go there automatically next time?`,
+      actions: (
+        <Button
+          size="small"
+          type="primary"
+          onClick={() => {
+            notification.destroy(key)
+            setRuleDefaults({
+              keyword,
+              coaCode,
+              sourceNote: why ?? `Created from the ${formatDay(t.date)} transaction "${t.description}".`,
+            })
+          }}
+        >
+          Create a rule
+        </Button>
+      ),
+      duration: 10,
+    })
+  }
+
+  /** Uses the owner's answer: the row gets that category and is approved. */
+  const acceptAnswer = async (t: Transaction) => {
+    const q = t.question
+    if (!q?.answerCode) return
+    setBusy(t.id)
+    try {
+      await api(`/pharmacies/${pharmacyId}/questions/${q.id}/accept`, { method: 'POST' })
+      refresh()
+      offerRule(
+        t,
+        q.answerCode,
+        "Owner's answer accepted",
+        `Owner confirmed on ${formatDay((q.answeredAt ?? q.askedAt).slice(0, 10))} for "${t.description}"${q.answerNote ? `: ${q.answerNote}` : ''}.`,
+      )
+    } catch (err) {
+      fail("Could not accept the owner's answer", err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const cancelQuestion = async (t: Transaction) => {
+    if (!t.question) return
+    setBusy(t.id)
+    try {
+      await api(`/pharmacies/${pharmacyId}/questions/${t.question.id}/cancel`, { method: 'POST' })
+      refresh()
+    } catch (err) {
+      fail('Could not cancel the question', err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const onAskedOwner = (result: AskOwnerResult) => {
+    setAskingOwner(null)
+    refresh()
+    notification.success({
+      title: `Asked the owner about ${plural(result.asked, 'transaction')}`,
+      description:
+        'They see the questions when they sign in to RxBooks. Email reminders come later, so let them know for now.' +
+        (result.overSoftCap.length
+          ? ` Note: more than 5 open questions in ${result.overSoftCap.map(formatMonth).join(', ')}.`
+          : ''),
+      duration: 8,
+    })
+  }
+
   /** A person picks the account: approved as their decision, then offer a rule. */
   const setAccount = async (t: Transaction, coaCode: string) => {
     setBusy(t.id)
@@ -160,32 +242,7 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
         body: JSON.stringify({ coaCode }),
       })
       refresh()
-      if (coaCode !== UNCATEGORIZED_CODE) {
-        const key = `rule-${t.id}`
-        const keyword = suggestKeyword(t.description)
-        notification.success({
-          key,
-          title: 'Category saved',
-          description: `Want "${keyword}" to go there automatically next time?`,
-          actions: (
-            <Button
-              size="small"
-              type="primary"
-              onClick={() => {
-                notification.destroy(key)
-                setRuleDefaults({
-                  keyword,
-                  coaCode,
-                  sourceNote: `Created from the ${formatDay(t.date)} transaction "${t.description}".`,
-                })
-              }}
-            >
-              Create a rule
-            </Button>
-          ),
-          duration: 10,
-        })
-      }
+      if (coaCode !== UNCATEGORIZED_CODE) offerRule(t, coaCode, 'Category saved')
     } catch (err) {
       fail('Could not change the category', err)
     } finally {
@@ -364,6 +421,12 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
               </Tag>
             </Tooltip>
           )}
+          <QuestionBlock
+            t={t}
+            busy={busy === t.id}
+            onAccept={() => acceptAnswer(t)}
+            onCancel={() => cancelQuestion(t)}
+          />
         </>
       ),
     },
@@ -428,6 +491,7 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
   const chosen = (data?.transactions ?? []).filter((t) => selected.includes(t.id))
   const toApprove = chosen.filter((t) => t.status === 'suggested').map((t) => t.id)
   const forAi = chosen.filter(canAskAi).map((t) => t.id)
+  const forOwner = chosen.filter(canAskOwner)
   const uncategorizedShown = rows.filter((t) => t.status === 'uncategorized').map((t) => t.id)
   const summary =
     data?.month && totals ? (
@@ -444,6 +508,8 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
           </span>
           <Typography.Text type="secondary">
             {totals.approved} approved · {totals.suggested} to confirm · {totals.uncategorized} uncategorized
+            {totals.questionsWaiting > 0 && ` · ${totals.questionsWaiting} waiting on owner`}
+            {totals.questionsAnswered > 0 && ` · ${totals.questionsAnswered} answered by owner`}
           </Typography.Text>
         </Space>
         <Space wrap>
@@ -482,6 +548,19 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
                   onClick={() => askAi(forAi)}
                 >
                   Ask AI ({forAi.length})
+                </Button>
+              </Tooltip>
+              <Tooltip
+                title={
+                  forOwner.length === 0 ? 'Approved rows and rows already asked about are left out.' : undefined
+                }
+              >
+                <Button
+                  icon={<QuestionCircleOutlined />}
+                  disabled={forOwner.length === 0}
+                  onClick={() => setAskingOwner(forOwner)}
+                >
+                  Ask owner ({forOwner.length})
                 </Button>
               </Tooltip>
             </>
@@ -628,6 +707,17 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
         />
       )}
 
+      {askingOwner && (
+        <AskOwnerModal
+          pharmacyId={pharmacyId}
+          rows={askingOwner}
+          options={accountOptions}
+          openInMonth={(totals?.questionsWaiting ?? 0) + (totals?.questionsAnswered ?? 0)}
+          onClose={() => setAskingOwner(null)}
+          onAsked={onAskedOwner}
+        />
+      )}
+
       <RuleFormModal
         open={ruleDefaults !== null}
         rule={null}
@@ -642,5 +732,60 @@ export function TransactionsTab({ pharmacyId, pharmacyName, onAddAccounts }: Pro
         }}
       />
     </>
+  )
+}
+
+/** Where a question to the owner stands, with the actions that fit. */
+function QuestionBlock({
+  t,
+  busy,
+  onAccept,
+  onCancel,
+}: {
+  t: Transaction
+  busy: boolean
+  onAccept: () => void
+  onCancel: () => void
+}) {
+  const q = t.question
+  if (!q || q.status === 'cancelled') return null
+  if (q.status === 'waiting') {
+    return (
+      <Flex align="center" gap={4} wrap style={{ marginTop: 4 }}>
+        <Tag color="blue">Asked owner {formatDay(q.askedAt.slice(0, 10))}</Tag>
+        <Button size="small" type="link" onClick={onCancel} loading={busy} style={{ padding: 0 }}>
+          Cancel
+        </Button>
+        <CellNote>{q.staffNote ? `Your note: ${q.staffNote}` : null}</CellNote>
+      </Flex>
+    )
+  }
+  if (q.status === 'answered') {
+    const answer = q.answerUnsure ? 'Not sure — asks you to decide' : (q.answerLabel ?? '')
+    return (
+      <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: 'rgba(250, 173, 20, 0.08)' }}>
+        <Tag color="gold">Owner answered</Tag>
+        <Typography.Text style={{ fontSize: 13 }}>{answer}</Typography.Text>
+        <CellNote>{q.answerNote ? `"${q.answerNote}"` : null}</CellNote>
+        {q.willSendDocument && <Tag style={{ marginTop: 4 }}>Will send a document</Tag>}
+        <Flex gap={8} style={{ marginTop: 4 }}>
+          {!q.answerUnsure && (
+            <Button size="small" type="primary" icon={<CheckOutlined />} loading={busy} onClick={onAccept}>
+              Accept
+            </Button>
+          )}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {q.answerUnsure ? 'Pick the category above.' : 'Or pick another category above to override.'}
+          </Typography.Text>
+        </Flex>
+      </div>
+    )
+  }
+  return (
+    <CellNote>
+      {q.status === 'accepted'
+        ? null
+        : `Owner answered ${q.answerUnsure ? '"not sure"' : (q.answerLabel ?? '')}; overridden by staff`}
+    </CellNote>
   )
 }

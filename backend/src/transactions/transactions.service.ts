@@ -7,6 +7,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, type Repository } from 'typeorm';
 import { UNCATEGORIZED_CODE } from '../coa/coa-account.entity.js';
 import { CoaService } from '../coa/coa.service.js';
+import {
+  OPEN_STATUSES,
+  OwnerQuestion,
+  type QuestionStatus,
+} from '../owner-questions/owner-question.entity.js';
 import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
 import { UsersService } from '../users/users.service.js';
 import {
@@ -48,6 +53,25 @@ export interface TransactionView {
   aiRunId: number | null;
   subtag: Subtag | null;
   subtagNote: string | null;
+  /** The latest question to the owner about this row, if any. */
+  question: QuestionView | null;
+}
+
+/** What staff see of an owner question. */
+export interface QuestionView {
+  id: number;
+  status: QuestionStatus;
+  askedAt: Date;
+  suggestedCode: string | null;
+  suggestedLabel: string | null;
+  staffNote: string | null;
+  /** The owner's pick; null when they haven't answered or said "not sure". */
+  answerCode: string | null;
+  answerLabel: string | null;
+  answerUnsure: boolean;
+  answerNote: string | null;
+  willSendDocument: boolean;
+  answeredAt: Date | null;
 }
 
 export interface TransactionMonth {
@@ -63,6 +87,9 @@ export interface TransactionMonth {
     approved: number;
     suggested: number;
     uncategorized: number;
+    /** Questions to the owner still waiting for an answer / answered but not yet accepted. */
+    questionsWaiting: number;
+    questionsAnswered: number;
   };
 }
 
@@ -78,6 +105,8 @@ export class TransactionsService {
     private readonly uploads: Repository<TransactionUpload>,
     @InjectRepository(Pharmacy)
     private readonly pharmacies: Repository<Pharmacy>,
+    @InjectRepository(OwnerQuestion)
+    private readonly questions: Repository<OwnerQuestion>,
     private readonly coa: CoaService,
     private readonly users: UsersService,
     private readonly categorization: CategorizationService,
@@ -99,7 +128,7 @@ export class TransactionsService {
     ].sort((a, b) => b.localeCompare(a));
     const month = filter.month ?? months[0] ?? null;
     if (!month) {
-      return { months, month, transactions: [], totals: totals([]) };
+      return { months, month, transactions: [], totals: totals([], []) };
     }
 
     const rows = await this.transactions.find({
@@ -108,12 +137,8 @@ export class TransactionsService {
         : { pharmacyId, period: month },
     });
     rows.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
-    return {
-      months,
-      month,
-      totals: totals(rows),
-      transactions: await this.views(rows),
-    };
+    const transactions = await this.views(rows);
+    return { months, month, totals: totals(rows, transactions), transactions };
   }
 
   /**
@@ -161,6 +186,7 @@ export class TransactionsService {
         approvedAt: new Date(),
         ...AI_CLEARED,
       });
+      await this.closeQuestions([row.id], userId);
     }
     return (await this.views([await this.transactions.save(row)]))[0];
   }
@@ -187,7 +213,13 @@ export class TransactionsService {
         approvedAt: now,
       });
     }
-    if (ready.length > 0) await this.transactions.save(ready);
+    if (ready.length > 0) {
+      await this.transactions.save(ready);
+      await this.closeQuestions(
+        ready.map((r) => r.id),
+        userId,
+      );
+    }
     return { approved: ready.length, skipped: rows.length - ready.length };
   }
 
@@ -221,6 +253,28 @@ export class TransactionsService {
     return this.categorization.run(pharmacyId, scope);
   }
 
+  /**
+   * Staff decided these rows themselves: an open question is no longer needed.
+   * Answered ones count as overridden, unanswered ones as cancelled.
+   */
+  private async closeQuestions(transactionIds: number[], userId: number) {
+    const open = (
+      await this.questions.find({
+        where: { transactionId: In(transactionIds) },
+      })
+    ).filter((q) => OPEN_STATUSES.includes(q.status));
+    if (open.length === 0) return;
+    const now = new Date();
+    for (const q of open) {
+      Object.assign(q, {
+        status: q.status === 'answered' ? 'overridden' : 'cancelled',
+        resolvedBy: userId,
+        resolvedAt: now,
+      });
+    }
+    await this.questions.save(open);
+  }
+
   private async requirePharmacy(id: number) {
     if (!(await this.pharmacies.existsBy({ id }))) {
       throw new NotFoundException('Pharmacy not found.');
@@ -239,6 +293,41 @@ export class TransactionsService {
     const keywords = await this.categorization.ruleKeywords([
       ...new Set(rows.flatMap((r) => (r.ruleId ? [r.ruleId] : []))),
     ]);
+    // The latest question per row: an open one if there is one, else the newest.
+    const latest = new Map<number, OwnerQuestion>();
+    const asked = rows.length
+      ? await this.questions.find({
+          where: { transactionId: In(rows.map((r) => r.id)) },
+        })
+      : [];
+    for (const q of asked.sort((a, b) => a.id - b.id)) {
+      const current = latest.get(q.transactionId);
+      if (!current || !OPEN_STATUSES.includes(current.status)) {
+        latest.set(q.transactionId, q);
+      }
+    }
+    const question = (q: OwnerQuestion | undefined): QuestionView | null =>
+      q
+        ? {
+            id: q.id,
+            status: q.status,
+            askedAt: q.askedAt,
+            suggestedCode: q.suggestedCode,
+            suggestedLabel: q.suggestedCode
+              ? (labels.get(q.suggestedCode) ?? q.suggestedCode)
+              : null,
+            staffNote: q.staffNote,
+            answerCode: q.answerCode,
+            answerLabel: q.answerCode
+              ? (labels.get(q.answerCode) ?? q.answerCode)
+              : null,
+            answerUnsure: q.answerUnsure,
+            answerNote: q.answerNote,
+            willSendDocument: q.willSendDocument,
+            answeredAt: q.answeredAt,
+          }
+        : null;
+
     const names = new Map<number, string>();
     for (const id of new Set(
       rows.flatMap((r) => (r.approvedBy ? [r.approvedBy] : [])),
@@ -270,11 +359,15 @@ export class TransactionsService {
       aiRunId: t.aiRunId,
       subtag: t.subtag,
       subtagNote: t.subtagNote,
+      question: question(latest.get(t.id)),
     }));
   }
 }
 
-function totals(rows: BankTransaction[]): TransactionMonth['totals'] {
+function totals(
+  rows: BankTransaction[],
+  views: TransactionView[],
+): TransactionMonth['totals'] {
   const cents = rows.map((r) => parseCents(r.amount) ?? 0);
   const count = (status: TransactionStatus) =>
     rows.filter((r) => r.status === status).length;
@@ -289,5 +382,9 @@ function totals(rows: BankTransaction[]): TransactionMonth['totals'] {
     approved: count('approved'),
     suggested: count('suggested'),
     uncategorized: count('uncategorized'),
+    questionsWaiting: views.filter((v) => v.question?.status === 'waiting')
+      .length,
+    questionsAnswered: views.filter((v) => v.question?.status === 'answered')
+      .length,
   };
 }

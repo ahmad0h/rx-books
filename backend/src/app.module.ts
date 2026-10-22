@@ -9,6 +9,7 @@ import { validateEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
 import { DemoModule } from './demo/demo.module.js';
 import { HealthModule } from './health/health.module.js';
+import { OwnerQuestionsModule } from './owner-questions/owner-questions.module.js';
 import { PharmaciesModule } from './pharmacies/pharmacies.module.js';
 import { PharmacyAccountsModule } from './pharmacy-accounts/pharmacy-accounts.module.js';
 import { RulesModule } from './rules/rules.module.js';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module.js';
     PharmacyAccountsModule,
     TransactionsModule,
     AiModule,
+    OwnerQuestionsModule,
     DemoModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
