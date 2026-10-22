@@ -17,6 +17,7 @@ import {
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { api, ApiError } from '../../shared/api.ts'
+import { CellNote } from '../../shared/CellNote.tsx'
 import { useCoa } from '../coa/useCoa.ts'
 import { usePharmacies } from '../pharmacies/usePharmacies.ts'
 import { RuleFormModal } from './RuleFormModal.tsx'
@@ -104,19 +105,24 @@ export function RulesPage() {
     {
       title: 'Keyword',
       dataIndex: 'keyword',
+      // Wide enough for the longest keywords on one line; the note wraps under it.
+      width: 300,
       sorter: (a, b) => a.keyword.localeCompare(b.keyword),
       render: (keyword: string, rule) => (
-        <Space size={4} wrap>
-          <Typography.Text
-            code
-            strong={rule.retiredAt === null}
-            type={rule.retiredAt ? 'secondary' : undefined}
-            style={{ whiteSpace: 'nowrap' }}
-          >
-            {keyword}
-          </Typography.Text>
-          {rule.retiredAt && <Tag>Deleted</Tag>}
-        </Space>
+        <>
+          <Space size={4} wrap>
+            <Typography.Text
+              code
+              strong={rule.retiredAt === null}
+              type={rule.retiredAt ? 'secondary' : undefined}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {keyword}
+            </Typography.Text>
+            {rule.retiredAt && <Tag>Deleted</Tag>}
+          </Space>
+          <CellNote>{rule.sourceNote}</CellNote>
+        </>
       ),
     },
     {
@@ -137,7 +143,12 @@ export function RulesPage() {
     {
       title: 'Tag',
       dataIndex: 'tag',
-      render: (tag: string | null) => tag ?? <Typography.Text type="secondary">—</Typography.Text>,
+      render: (tag: string | null) =>
+        tag ? (
+          <span style={{ whiteSpace: 'nowrap' }}>{tag}</span>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
     },
     {
       title: 'Source',
@@ -271,12 +282,6 @@ export function RulesPage() {
             loading={state.status === 'loading'}
             pagination={{ pageSize: 50, hideOnSinglePage: true, showSizeChanger: false }}
             scroll={{ x: 900 }}
-            expandable={{
-              rowExpandable: (r) => Boolean(r.sourceNote),
-              expandedRowRender: (r) => (
-                <Typography.Paragraph style={{ margin: 0, maxWidth: 720 }}>{r.sourceNote}</Typography.Paragraph>
-              ),
-            }}
             locale={{
               emptyText:
                 all.length === 0 ? `No rules for ${listName} yet. Add the first one.` : 'No rules match these filters.',

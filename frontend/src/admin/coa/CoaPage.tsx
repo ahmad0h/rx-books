@@ -16,6 +16,7 @@ import {
 } from 'antd'
 import { useMemo, useState } from 'react'
 import { api, ApiError } from '../../shared/api.ts'
+import { CellNote } from '../../shared/CellNote.tsx'
 import { CoaFormModal } from './CoaFormModal.tsx'
 import {
   ACCOUNT_TYPES,
@@ -113,16 +114,19 @@ export function CoaPage() {
       dataIndex: 'name',
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string, account) => (
-        <Space size={4} wrap>
-          <Typography.Text strong type={account.isActive ? undefined : 'secondary'}>
-            {name}
-          </Typography.Text>
-          {!account.isActive && <Tag>Inactive</Tag>}
-          {!account.categorizable && (
-            <Tag title="Journal entries only — transactions cannot be put here">No transactions</Tag>
-          )}
-          {account.contraOf && <Tag title="Contra account">Offsets {account.contraOf}</Tag>}
-        </Space>
+        <>
+          <Space size={4} wrap>
+            <Typography.Text strong type={account.isActive ? undefined : 'secondary'}>
+              {name}
+            </Typography.Text>
+            {!account.isActive && <Tag>Inactive</Tag>}
+            {!account.categorizable && (
+              <Tag title="Journal entries only — transactions cannot be put here">No transactions</Tag>
+            )}
+            {account.contraOf && <Tag title="Contra account">Offsets {account.contraOf}</Tag>}
+          </Space>
+          <CellNote>{account.description}</CellNote>
+        </>
       ),
     },
     {
@@ -237,12 +241,6 @@ export function CoaPage() {
             loading={state.status === 'loading'}
             pagination={false}
             scroll={{ x: 900 }}
-            expandable={{
-              rowExpandable: (a) => Boolean(a.description),
-              expandedRowRender: (a) => (
-                <Typography.Paragraph style={{ margin: 0, maxWidth: 720 }}>{a.description}</Typography.Paragraph>
-              ),
-            }}
             locale={{ emptyText: 'No accounts match these filters.' }}
             footer={() =>
               state.status === 'ready' && (

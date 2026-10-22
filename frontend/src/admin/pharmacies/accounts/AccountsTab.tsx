@@ -2,6 +2,7 @@ import { CreditCardOutlined, EditOutlined, PlusOutlined, UndoOutlined } from '@a
 import { Alert, App, Button, Flex, Popconfirm, Space, Table, Tag, Typography, type TableProps } from 'antd'
 import { useState } from 'react'
 import { api, ApiError } from '../../../shared/api.ts'
+import { CellNote } from '../../../shared/CellNote.tsx'
 import { useCoa } from '../../coa/useCoa.ts'
 import { AccountFormModal } from './AccountFormModal.tsx'
 import { formatDay, KIND_LABELS, today, type PharmacyAccount } from './account.ts'
@@ -59,12 +60,15 @@ export function AccountsTab({ pharmacyId }: { pharmacyId: number }) {
       title: 'Account',
       dataIndex: 'name',
       render: (name: string, a) => (
-        <Space size={4} wrap>
-          <Typography.Text strong type={a.closedOn ? 'secondary' : undefined}>
-            {name}
-          </Typography.Text>
-          {a.closedOn && <Tag>Closed {formatDay(a.closedOn)}</Tag>}
-        </Space>
+        <>
+          <Space size={4} wrap>
+            <Typography.Text strong type={a.closedOn ? 'secondary' : undefined}>
+              {name}
+            </Typography.Text>
+            {a.closedOn && <Tag>Closed {formatDay(a.closedOn)}</Tag>}
+          </Space>
+          <CellNote>{a.notes}</CellNote>
+        </>
       ),
     },
     {
@@ -153,12 +157,6 @@ export function AccountsTab({ pharmacyId }: { pharmacyId: number }) {
           loading={state.status === 'loading'}
           pagination={false}
           scroll={{ x: 900 }}
-          expandable={{
-            rowExpandable: (a) => Boolean(a.notes),
-            expandedRowRender: (a) => (
-              <Typography.Paragraph style={{ margin: 0, maxWidth: 720 }}>{a.notes}</Typography.Paragraph>
-            ),
-          }}
           locale={{
             emptyText: (
               <Flex vertical align="center" gap={4} style={{ padding: 16 }}>

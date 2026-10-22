@@ -12,6 +12,7 @@ import { CreatePharmacies1790600000000 } from './migrations/1790600000000-Create
 import { CreateChartOfAccounts1790700000000 } from './migrations/1790700000000-CreateChartOfAccounts.js';
 import { CreateRules1790800000000 } from './migrations/1790800000000-CreateRules.js';
 import { CreatePharmacyAccounts1790900000000 } from './migrations/1790900000000-CreatePharmacyAccounts.js';
+import { AddSecondChecking1791000000000 } from './migrations/1791000000000-AddSecondChecking.js';
 
 /** Every table the app uses. Add new entities here. */
 export const ENTITIES = [User, Pharmacy, CoaAccount, Rule, PharmacyAccount];
@@ -24,6 +25,7 @@ export const MIGRATIONS = [
   CreateChartOfAccounts1790700000000,
   CreateRules1790800000000,
   CreatePharmacyAccounts1790900000000,
+  AddSecondChecking1791000000000,
 ];
 
 /** Plain TypeORM settings, shared by the app and the migration command line. */
