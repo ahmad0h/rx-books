@@ -6,8 +6,10 @@ import { AuthModule } from './auth/auth.module.js';
 import { CoaModule } from './coa/coa.module.js';
 import { validateEnv } from './config/env.js';
 import { DatabaseModule } from './database/database.module.js';
+import { DemoModule } from './demo/demo.module.js';
 import { HealthModule } from './health/health.module.js';
 import { PharmaciesModule } from './pharmacies/pharmacies.module.js';
+import { PharmacyAccountsModule } from './pharmacy-accounts/pharmacy-accounts.module.js';
 import { RulesModule } from './rules/rules.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -23,6 +25,8 @@ import { UsersModule } from './users/users.module.js';
     PharmaciesModule,
     CoaModule,
     RulesModule,
+    PharmacyAccountsModule,
+    DemoModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

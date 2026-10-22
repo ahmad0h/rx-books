@@ -3,6 +3,7 @@ import type { DataSourceOptions } from 'typeorm';
 import type { DatabaseEnv } from '../config/env.js';
 import { CoaAccount } from '../coa/coa-account.entity.js';
 import { Pharmacy } from '../pharmacies/pharmacy.entity.js';
+import { PharmacyAccount } from '../pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../rules/rule.entity.js';
 import { User } from '../users/user.entity.js';
 import { CreateUsers1790514830000 } from './migrations/1790514830000-CreateUsers.js';
@@ -10,9 +11,10 @@ import { AddPasswordChangedAt1790520000000 } from './migrations/1790520000000-Ad
 import { CreatePharmacies1790600000000 } from './migrations/1790600000000-CreatePharmacies.js';
 import { CreateChartOfAccounts1790700000000 } from './migrations/1790700000000-CreateChartOfAccounts.js';
 import { CreateRules1790800000000 } from './migrations/1790800000000-CreateRules.js';
+import { CreatePharmacyAccounts1790900000000 } from './migrations/1790900000000-CreatePharmacyAccounts.js';
 
 /** Every table the app uses. Add new entities here. */
-export const ENTITIES = [User, Pharmacy, CoaAccount, Rule];
+export const ENTITIES = [User, Pharmacy, CoaAccount, Rule, PharmacyAccount];
 
 /** Every migration, oldest first. Add new migrations here. */
 export const MIGRATIONS = [
@@ -21,6 +23,7 @@ export const MIGRATIONS = [
   CreatePharmacies1790600000000,
   CreateChartOfAccounts1790700000000,
   CreateRules1790800000000,
+  CreatePharmacyAccounts1790900000000,
 ];
 
 /** Plain TypeORM settings, shared by the app and the migration command line. */

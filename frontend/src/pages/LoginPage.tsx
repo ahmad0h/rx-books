@@ -82,7 +82,7 @@ export function LoginPage() {
         </Card>
 
         <Typography.Paragraph type="secondary" style={{ textAlign: 'center', marginTop: 16, fontSize: 13 }}>
-          Staff and pharmacy owners use the same sign-in.
+        
         </Typography.Paragraph>
       </div>
     </Flex>

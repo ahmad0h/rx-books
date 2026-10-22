@@ -7,6 +7,7 @@ import { configureApp } from '../src/app.setup.js';
 import { hashPassword } from '../src/auth/password.js';
 import { CoaAccount } from '../src/coa/coa-account.entity.js';
 import { Pharmacy } from '../src/pharmacies/pharmacy.entity.js';
+import { PharmacyAccount } from '../src/pharmacy-accounts/pharmacy-account.entity.js';
 import { Rule } from '../src/rules/rule.entity.js';
 import { User, type UserRole } from '../src/users/user.entity.js';
 
@@ -313,12 +314,70 @@ export class InMemoryRuleRepository {
   }
 }
 
+type StoredPharmacyAccount = Pick<
+  PharmacyAccount,
+  | 'id'
+  | 'pharmacyId'
+  | 'name'
+  | 'kind'
+  | 'bank'
+  | 'lastFour'
+  | 'coaCode'
+  | 'openedOn'
+  | 'closedOn'
+  | 'notes'
+  | 'createdAt'
+  | 'updatedAt'
+>;
+
+/** Just enough of TypeORM's Repository<PharmacyAccount>, kept in memory. */
+export class InMemoryPharmacyAccountRepository {
+  rows: StoredPharmacyAccount[] = [];
+
+  find({ where }: { where: object }) {
+    return Promise.resolve(
+      this.rows.filter((r) => matchesWhere(r, where)).map((r) => ({ ...r })),
+    );
+  }
+
+  findOneBy(where: object) {
+    const row = this.rows.find((r) => matchesWhere(r, where));
+    return Promise.resolve(row ? { ...row } : null);
+  }
+
+  existsBy(where: object) {
+    return Promise.resolve(this.rows.some((r) => matchesWhere(r, where)));
+  }
+
+  create(input: Partial<StoredPharmacyAccount>) {
+    return { ...input } as StoredPharmacyAccount;
+  }
+
+  save(account: StoredPharmacyAccount) {
+    const now = new Date();
+    const existing = this.rows.find((r) => r.id === account.id);
+    if (existing) {
+      Object.assign(existing, account, { updatedAt: now });
+      return Promise.resolve({ ...existing });
+    }
+    const row = {
+      ...account,
+      id: this.rows.length + 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.rows.push(row);
+    return Promise.resolve({ ...row });
+  }
+}
+
 /** The real app with the database replaced by fakes, so tests need no MySQL. */
 export async function createTestApp() {
   const users = new InMemoryUserRepository();
   const pharmacies = new InMemoryPharmacyRepository();
   const coa = new InMemoryCoaRepository();
   const rules = new InMemoryRuleRepository();
+  const accounts = new InMemoryPharmacyAccountRepository();
   const manager = {
     getRepository: (entity: unknown) =>
       entity === User ? users : entity === Pharmacy ? pharmacies : undefined,
@@ -342,10 +401,12 @@ export async function createTestApp() {
     .useValue(coa)
     .overrideProvider(getRepositoryToken(Rule))
     .useValue(rules)
+    .overrideProvider(getRepositoryToken(PharmacyAccount))
+    .useValue(accounts)
     .compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
-  return { app, users, pharmacies, coa, rules, dataSource };
+  return { app, users, pharmacies, coa, rules, accounts, dataSource };
 }

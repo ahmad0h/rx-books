@@ -3,6 +3,7 @@ import { AdminHomePage } from './admin/AdminHomePage.tsx'
 import { AdminLayout } from './admin/AdminLayout.tsx'
 import { CoaPage } from './admin/coa/CoaPage.tsx'
 import { PharmaciesPage } from './admin/pharmacies/PharmaciesPage.tsx'
+import { PharmacyPage } from './admin/pharmacies/PharmacyPage.tsx'
 import { RulesPage } from './admin/rules/RulesPage.tsx'
 import { ClientHomePage } from './client/ClientHomePage.tsx'
 import { ClientLayout } from './client/ClientLayout.tsx'
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <AdminHomePage /> },
       { path: 'pharmacies', element: <PharmaciesPage /> },
+      { path: 'pharmacies/:id', element: <PharmacyPage /> },
       { path: 'chart-of-accounts', element: <CoaPage /> },
       { path: 'rules', element: <RulesPage /> },
     ],

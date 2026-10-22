@@ -1,6 +1,7 @@
-import { EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Flex, Input, Table, Typography, type TableProps } from 'antd'
+import { EditOutlined, PlusOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Flex, Input, Space, Table, Typography, type TableProps } from 'antd'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router'
 import { PharmacyFormModal } from './PharmacyFormModal.tsx'
 import { TEMPORARY_OWNER_PASSWORD, type Pharmacy } from './pharmacy.ts'
 import { usePharmacies } from './usePharmacies.ts'
@@ -49,7 +50,11 @@ export function PharmaciesPage() {
       title: 'Pharmacy',
       dataIndex: 'name',
       sorter: (a, b) => a.name.localeCompare(b.name),
-      render: (name: string) => <Typography.Text strong>{name}</Typography.Text>,
+      render: (name: string, pharmacy) => (
+        <Link to={`/admin/pharmacies/${pharmacy.id}`}>
+          <Typography.Text strong>{name}</Typography.Text>
+        </Link>
+      ),
     },
     { title: 'Owner', dataIndex: 'ownerName', sorter: (a, b) => a.ownerName.localeCompare(b.ownerName) },
     { title: 'Phone', dataIndex: 'ownerPhone' },
@@ -65,9 +70,16 @@ export function PharmaciesPage() {
       key: 'actions',
       align: 'right',
       render: (_, pharmacy) => (
-        <Button icon={<EditOutlined />} size="small" onClick={() => setEditing(pharmacy)}>
-          Edit
-        </Button>
+        <Space size={8}>
+          <Button icon={<EditOutlined />} size="small" onClick={() => setEditing(pharmacy)}>
+            Edit
+          </Button>
+          <Link to={`/admin/pharmacies/${pharmacy.id}`}>
+            <Button size="small" type="primary" ghost>
+              Open <RightOutlined />
+            </Button>
+          </Link>
+        </Space>
       ),
     },
   ]
